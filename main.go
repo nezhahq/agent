@@ -71,13 +71,21 @@ var (
 const (
 	delayWhenError = time.Second * 10 // Agent 重连间隔
 	networkTimeOut = time.Second * 5  // 普通网络超时
+	macOSChromeUA  = ""
 )
 
 func init() {
 	flag.CommandLine.ParseErrorsWhitelist.UnknownFlags = true
 
 	http.DefaultClient.Timeout = time.Second * 5
-	httpClient.Transport = bpc.AddCloudFlareByPass(httpClient.Transport)
+	httpClient.Transport = bpc.AddCloudFlareByPass(httpClient.Transport, bpc.Options{
+		AddMissingHeaders: true,
+		Headers: map[string]string{
+			"Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+			"Accept-Language": "en-US,en;q=0.5",
+			"User-Agent":      monitor.MacOSChromeUA,
+		},
+	})
 
 	ex, err := os.Executable()
 	if err != nil {

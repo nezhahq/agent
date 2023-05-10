@@ -8,11 +8,16 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    container:
+      # https://github.com/goreleaser/goreleaser-cross/issues/29
+      image: goreleaser/goreleaser-cross:v1.19.2
     steps:
       - uses: actions/checkout@master
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v2
+        with:
+          go-version: "^1.20.0"
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:

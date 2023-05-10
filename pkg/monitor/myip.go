@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	fakeUa "github.com/EDDYCJY/fake-useragent"
-
 	"github.com/nezhahq/agent/pkg/util"
 )
+
+const MacOSChromeUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
 
 type geoIP struct {
 	CountryCode  string `json:"country_code,omitempty"`
@@ -120,6 +120,6 @@ func httpGetWithUA(client *http.Client, url string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("User-Agent", fakeUa.Random())
+	req.Header.Add("User-Agent", MacOSChromeUA)
 	return client.Do(req)
 }
