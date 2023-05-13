@@ -105,7 +105,7 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 	var ret model.HostState
 
 	cp, err := cpu.Percent(0, false)
-	if err != nil {
+	if err != nil || len(cp) == 0 {
 		println("cpu.Percent error:", err)
 	} else {
 		ret.CPU = cp[0]
