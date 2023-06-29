@@ -75,6 +75,15 @@ const (
 )
 
 func init() {
+	net.DefaultResolver.PreferGo = true // 使用 Go 内置的 DNS 解析器解析域名
+	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		d := net.Dialer{
+			Timeout: time.Second * 5,
+		}
+		dnsServers := []string{"1.0.0.1", "8.8.4.4", "223.5.5.5", "223.6.6.6"}
+		dnsServer := dnsServers[time.Now().Unix()%int64(len(dnsServers))]
+		return d.DialContext(ctx, "udp", dnsServer+":53")
+	}
 	flag.CommandLine.ParseErrorsWhitelist.UnknownFlags = true
 
 	http.DefaultClient.Timeout = time.Second * 5
