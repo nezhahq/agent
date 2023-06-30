@@ -87,8 +87,17 @@ func init() {
 		if len(agentConfig.DNS) > 0 {
 			dnsServers = agentConfig.DNS
 		}
-		dnsServer := dnsServers[time.Now().Unix()%int64(len(dnsServers))]
-		return d.DialContext(ctx, "udp", dnsServer)
+		index := int(time.Now().Unix()) % int(len(dnsServers))
+		queue := generateQueue(index, len(dnsServers))
+		var conn net.Conn
+		var err error
+		for i := 0; i < len(queue); i++ {
+			conn, err = d.DialContext(ctx, "udp", dnsServers[queue[i]])
+			if err == nil {
+				return conn, nil
+			}
+		}
+		return nil, err
 	}
 	flag.CommandLine.ParseErrorsWhitelist.UnknownFlags = true
 
@@ -635,4 +644,16 @@ func println(v ...interface{}) {
 		fmt.Printf("NEZHA@%s>> ", time.Now().Format("2006-01-02 15:04:05"))
 		fmt.Println(v...)
 	}
+}
+
+func generateQueue(start int, size int) []int {
+	var result []int
+	for i := start; i < start+size; i++ {
+		if i < size {
+			result = append(result, i)
+		} else {
+			result = append(result, i-size)
+		}
+	}
+	return result
 }
