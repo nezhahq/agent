@@ -80,9 +80,15 @@ func init() {
 		d := net.Dialer{
 			Timeout: time.Second * 5,
 		}
-		dnsServers := []string{"1.0.0.1", "8.8.4.4", "223.5.5.5", "223.6.6.6"}
+		dnsServers := []string{
+			"1.0.0.1:53", "8.8.4.4:53", "223.5.5.5:53", "223.6.6.6:53",
+			"[2606:4700:4700::1001]:53", "[2001:4860:4860::8844]:53", "[2400:3200::1]:53", "[2400:3200:baba::1]:53",
+		}
+		if len(agentConfig.DNS) > 0 {
+			dnsServers = agentConfig.DNS
+		}
 		dnsServer := dnsServers[time.Now().Unix()%int64(len(dnsServers))]
-		return d.DialContext(ctx, "udp", dnsServer+":53")
+		return d.DialContext(ctx, "udp", dnsServer)
 	}
 	flag.CommandLine.ParseErrorsWhitelist.UnknownFlags = true
 
@@ -130,7 +136,7 @@ func main() {
 	// 初始化运行参数
 	var isEditAgentConfig bool
 	flag.BoolVarP(&agentCliParam.Debug, "debug", "d", false, "开启调试信息")
-	flag.BoolVarP(&isEditAgentConfig, "edit-agent-config", "", false, "修改要监控的网卡/分区白名单")
+	flag.BoolVarP(&isEditAgentConfig, "edit-agent-config", "c", false, "修改要监控的网卡/分区名单，修改自定义 DNS")
 	flag.StringVarP(&agentCliParam.Server, "server", "s", "localhost:5555", "管理面板RPC端口")
 	flag.StringVarP(&agentCliParam.ClientSecret, "password", "p", "", "Agent连接Secret")
 	flag.IntVar(&agentCliParam.ReportDelay, "report-delay", 1, "系统状态上报间隔")
@@ -567,11 +573,19 @@ func editAgentConfig() {
 				Options: diskAllowlistOptions,
 			},
 		},
+		{
+			Name: "dns",
+			Prompt: &survey.Input{
+				Message: "自定义 DNS，可输入空格跳过，如 1.1.1.1:53,1.0.0.1:53",
+				Default: strings.Join(agentConfig.DNS, ","),
+			},
+		},
 	}
 
 	answers := struct {
 		Nic  []string
 		Disk []string
+		DNS  string
 	}{}
 
 	err = survey.Ask(qs, &answers, survey.WithValidator(survey.Required))
@@ -588,6 +602,25 @@ func editAgentConfig() {
 	agentConfig.NICAllowlist = make(map[string]bool)
 	for _, v := range answers.Nic {
 		agentConfig.NICAllowlist[v] = true
+	}
+
+	dnsServers := strings.TrimSpace(answers.DNS)
+
+	if dnsServers != "" {
+		agentConfig.DNS = strings.Split(dnsServers, ",")
+		for _, s := range agentConfig.DNS {
+			host, _, err := net.SplitHostPort(s)
+			if err == nil {
+				if net.ParseIP(host) == nil {
+					err = errors.New("格式错误")
+				}
+			}
+			if err != nil {
+				panic(fmt.Sprintf("自定义 DNS 格式错误：%s %v", s, err))
+			}
+		}
+	} else {
+		agentConfig.DNS = []string{}
 	}
 
 	if err = agentConfig.Save(); err != nil {

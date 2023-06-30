@@ -10,6 +10,7 @@ import (
 type AgentConfig struct {
 	HardDrivePartitionAllowlist []string
 	NICAllowlist                map[string]bool
+	DNS                         []string
 	v                           *viper.Viper
 }
 
