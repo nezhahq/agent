@@ -40,10 +40,10 @@ func (ip *geoIP) Unmarshal(body []byte) error {
 
 var (
 	geoIPApiList = []string{
+		"http://api.myip.la/en?json",
 		"https://api.ip.sb/geoip",
 		"https://ipapi.co/json",
 		"http://ip-api.com/json/",
-		// "http://api.myip.la/en?json", // 已失效
 		// "https://extreme-ip-lookup.com/json/", // 不精确
 		// "https://ip.seeip.org/geoip", // 不精确
 		// "https://freegeoip.app/json/", // 需要 Key
