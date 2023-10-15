@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	bpc "github.com/DaRealFreak/cloudflare-bp-go"
 	"github.com/blang/semver"
+	"github.com/ebi-yade/altsvc-go"
 	"github.com/go-ping/ping"
 	"github.com/gorilla/websocket"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
@@ -399,11 +401,63 @@ func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 			c := resp.TLS.PeerCertificates[0]
 			result.Data = c.Issuer.CommonName + "|" + c.NotAfter.String()
 		}
-		result.Successful = true
+		altSvc := resp.Header.Get("Alt-Svc")
+		parsedUrl, _ := url.Parse(task.Data)
+		originalHost := parsedUrl.Hostname()
+		if checkAltSvc(altSvc, originalHost, result) {
+			result.Successful = true
+		}
 	} else {
 		// HTTP 请求失败
 		result.Data = err.Error()
 	}
+}
+
+func checkAltSvc(altSvcStr string, originalHost string, result *pb.TaskResult) bool {
+	if altSvcStr == "" {
+		return true
+	}
+	altSvcList, _ := altsvc.Parse(altSvcStr)
+	altAuthorityHost := ""
+	altAuthorityPort := ""
+	for _, altSvc := range altSvcList {
+		if altSvc.AltAuthority.Host != "" && altSvc.AltAuthority.Host != originalHost {
+			altAuthorityHost = altSvc.AltAuthority.Host
+			altAuthorityPort = altSvc.AltAuthority.Port
+		}
+	}
+	if altAuthorityHost == "" {
+		return true
+	}
+	altAuthorityUrl := "https://" + altAuthorityHost + ":" + altAuthorityPort + "/"
+	println("checkAltSvc originalHost: ", originalHost, " AltSvc: ", altAuthorityUrl)
+	successful := false
+	req, _ := http.NewRequest("GET", altAuthorityUrl, nil)
+	req.Host = originalHost
+	req.Header.Add("Upgrade", originalHost)
+	req.Header.Add("Connection", "Upgrade")
+
+	start := time.Now()
+	resp, err := httpClient.Do(req)
+	if err == nil {
+		// 检查 HTTP Response 状态
+		result.Delay = float32(time.Since(start).Microseconds()) / 1000.0
+		if resp.StatusCode > 399 || resp.StatusCode < 200 {
+			err = errors.New("\n应用错误：" + resp.Status)
+		}
+	}
+	if err == nil {
+		// 检查 SSL 证书信息
+		if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
+			c := resp.TLS.PeerCertificates[0]
+			result.Data = c.Issuer.CommonName + "|" + c.NotAfter.String()
+		}
+		successful = true
+	} else {
+		// HTTP 请求失败
+		result.Data = err.Error()
+	}
+	return successful
 }
 
 func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
