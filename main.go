@@ -50,6 +50,7 @@ type AgentCliParam struct {
 	ClientSecret          string // 客户端密钥
 	ReportDelay           int    // 报告间隔
 	TLS                   bool   // 是否使用TLS加密传输至服务端
+	Version               bool   // 当前版本号
 }
 
 var (
@@ -157,7 +158,13 @@ func main() {
 	flag.BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
 	flag.BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
 	flag.BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
+	flag.BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 	flag.Parse()
+
+	if agentCliParam.Version {
+		fmt.Println(version)
+		return
+	}
 
 	if isEditAgentConfig {
 		editAgentConfig()
