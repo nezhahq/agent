@@ -394,7 +394,12 @@ func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
 
 func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 	start := time.Now()
-	resp, err := httpClient.Get(task.GetData())
+	taskUrl := task.GetData()
+	resp, err := httpClient.Get(taskUrl)
+	checkHttpResp(taskUrl, start, resp, err, result)
+}
+
+func checkHttpResp(taskUrl string, start time.Time, resp *http.Response, err error, result *pb.TaskResult) {
 	if err == nil {
 		// 检查 HTTP Response 状态
 		result.Delay = float32(time.Since(start).Microseconds()) / 1000.0
@@ -409,9 +414,9 @@ func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 			result.Data = c.Issuer.CommonName + "|" + c.NotAfter.String()
 		}
 		altSvc := resp.Header.Get("Alt-Svc")
-		parsedUrl, _ := url.Parse(task.Data)
-		originalHost := parsedUrl.Hostname()
-		if checkAltSvc(altSvc, originalHost, result) {
+		if altSvc != "" {
+			checkAltSvc(altSvc, taskUrl, result)
+		} else {
 			result.Successful = true
 		}
 	} else {
@@ -420,25 +425,43 @@ func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 	}
 }
 
-func checkAltSvc(altSvcStr string, originalHost string, result *pb.TaskResult) bool {
-	if altSvcStr == "" {
-		return true
+func checkAltSvc(altSvcStr string, taskUrl string, result *pb.TaskResult) {
+	altSvcList, err := altsvc.Parse(altSvcStr)
+	if err != nil {
+		result.Data = err.Error()
+		result.Successful = false
+		return
 	}
-	altSvcList, _ := altsvc.Parse(altSvcStr)
+
+	parsedUrl, _ := url.Parse(taskUrl)
+	originalHost := parsedUrl.Hostname()
+	originalPort := parsedUrl.Port()
+	if originalPort == "" {
+		switch parsedUrl.Scheme {
+		case "http":
+			originalPort = "80"
+		case "https":
+			originalPort = "443"
+		}
+	}
+
 	altAuthorityHost := ""
 	altAuthorityPort := ""
 	for _, altSvc := range altSvcList {
-		if altSvc.AltAuthority.Host != "" && altSvc.AltAuthority.Host != originalHost {
+		if altSvc.AltAuthority.Host != "" {
 			altAuthorityHost = altSvc.AltAuthority.Host
-			altAuthorityPort = altSvc.AltAuthority.Port
 		}
+		altAuthorityPort = altSvc.AltAuthority.Port
 	}
 	if altAuthorityHost == "" {
-		return true
+		altAuthorityHost = originalHost
 	}
+	if altAuthorityHost == originalHost && altAuthorityPort == originalPort {
+		result.Successful = true
+		return
+	}
+
 	altAuthorityUrl := "https://" + altAuthorityHost + ":" + altAuthorityPort + "/"
-	println("checkAltSvc originalHost: ", originalHost, " AltSvc: ", altAuthorityUrl)
-	successful := false
 	req, _ := http.NewRequest("GET", altAuthorityUrl, nil)
 	req.Host = originalHost
 	req.Header.Add("Upgrade", originalHost)
@@ -446,25 +469,7 @@ func checkAltSvc(altSvcStr string, originalHost string, result *pb.TaskResult) b
 
 	start := time.Now()
 	resp, err := httpClient.Do(req)
-	if err == nil {
-		// 检查 HTTP Response 状态
-		result.Delay = float32(time.Since(start).Microseconds()) / 1000.0
-		if resp.StatusCode > 399 || resp.StatusCode < 200 {
-			err = errors.New("\n应用错误：" + resp.Status)
-		}
-	}
-	if err == nil {
-		// 检查 SSL 证书信息
-		if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
-			c := resp.TLS.PeerCertificates[0]
-			result.Data = c.Issuer.CommonName + "|" + c.NotAfter.String()
-		}
-		successful = true
-	} else {
-		// HTTP 请求失败
-		result.Data = err.Error()
-	}
-	return successful
+	checkHttpResp(taskUrl, start, resp, err, result)
 }
 
 func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
