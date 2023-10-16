@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	bpc "github.com/DaRealFreak/cloudflare-bp-go"
 	"github.com/blang/semver"
+	"github.com/ebi-yade/altsvc-go"
 	"github.com/go-ping/ping"
 	"github.com/gorilla/websocket"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
@@ -48,6 +50,7 @@ type AgentCliParam struct {
 	ClientSecret          string // 客户端密钥
 	ReportDelay           int    // 报告间隔
 	TLS                   bool   // 是否使用TLS加密传输至服务端
+	Version               bool   // 当前版本号
 }
 
 var (
@@ -155,7 +158,13 @@ func main() {
 	flag.BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
 	flag.BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
 	flag.BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
+	flag.BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 	flag.Parse()
+
+	if agentCliParam.Version {
+		fmt.Println(version)
+		return
+	}
 
 	if isEditAgentConfig {
 		editAgentConfig()
@@ -385,7 +394,12 @@ func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
 
 func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 	start := time.Now()
-	resp, err := httpClient.Get(task.GetData())
+	taskUrl := task.GetData()
+	resp, err := httpClient.Get(taskUrl)
+	checkHttpResp(taskUrl, start, resp, err, result)
+}
+
+func checkHttpResp(taskUrl string, start time.Time, resp *http.Response, err error, result *pb.TaskResult) {
 	if err == nil {
 		// 检查 HTTP Response 状态
 		result.Delay = float32(time.Since(start).Microseconds()) / 1000.0
@@ -399,11 +413,63 @@ func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 			c := resp.TLS.PeerCertificates[0]
 			result.Data = c.Issuer.CommonName + "|" + c.NotAfter.String()
 		}
-		result.Successful = true
+		altSvc := resp.Header.Get("Alt-Svc")
+		if altSvc != "" {
+			checkAltSvc(altSvc, taskUrl, result)
+		} else {
+			result.Successful = true
+		}
 	} else {
 		// HTTP 请求失败
 		result.Data = err.Error()
 	}
+}
+
+func checkAltSvc(altSvcStr string, taskUrl string, result *pb.TaskResult) {
+	altSvcList, err := altsvc.Parse(altSvcStr)
+	if err != nil {
+		result.Data = err.Error()
+		result.Successful = false
+		return
+	}
+
+	parsedUrl, _ := url.Parse(taskUrl)
+	originalHost := parsedUrl.Hostname()
+	originalPort := parsedUrl.Port()
+	if originalPort == "" {
+		switch parsedUrl.Scheme {
+		case "http":
+			originalPort = "80"
+		case "https":
+			originalPort = "443"
+		}
+	}
+
+	altAuthorityHost := ""
+	altAuthorityPort := ""
+	for _, altSvc := range altSvcList {
+		if altSvc.AltAuthority.Host != "" {
+			altAuthorityHost = altSvc.AltAuthority.Host
+		}
+		altAuthorityPort = altSvc.AltAuthority.Port
+	}
+	if altAuthorityHost == "" {
+		altAuthorityHost = originalHost
+	}
+	if altAuthorityHost == originalHost && altAuthorityPort == originalPort {
+		result.Successful = true
+		return
+	}
+
+	altAuthorityUrl := "https://" + altAuthorityHost + ":" + altAuthorityPort + "/"
+	req, _ := http.NewRequest("GET", altAuthorityUrl, nil)
+	req.Host = originalHost
+	req.Header.Add("Upgrade", originalHost)
+	req.Header.Add("Connection", "Upgrade")
+
+	start := time.Now()
+	resp, err := httpClient.Do(req)
+	checkHttpResp(taskUrl, start, resp, err, result)
 }
 
 func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
