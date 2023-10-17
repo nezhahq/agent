@@ -415,7 +415,7 @@ func checkHttpResp(taskUrl string, start time.Time, resp *http.Response, err err
 		}
 		altSvc := resp.Header.Get("Alt-Svc")
 		if altSvc != "" {
-			checkAltSvc(altSvc, taskUrl, result)
+			checkAltSvc(start, altSvc, taskUrl, result)
 		} else {
 			result.Successful = true
 		}
@@ -425,7 +425,7 @@ func checkHttpResp(taskUrl string, start time.Time, resp *http.Response, err err
 	}
 }
 
-func checkAltSvc(altSvcStr string, taskUrl string, result *pb.TaskResult) {
+func checkAltSvc(start time.Time, altSvcStr string, taskUrl string, result *pb.TaskResult) {
 	altSvcList, err := altsvc.Parse(altSvcStr)
 	if err != nil {
 		result.Data = err.Error()
@@ -467,9 +467,9 @@ func checkAltSvc(altSvcStr string, taskUrl string, result *pb.TaskResult) {
 	req.Header.Add("Upgrade", originalHost)
 	req.Header.Add("Connection", "Upgrade")
 
-	start := time.Now()
 	resp, err := httpClient.Do(req)
-	checkHttpResp(taskUrl, start, resp, err, result)
+
+	checkHttpResp(altAuthorityUrl, start, resp, err, result)
 }
 
 func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
