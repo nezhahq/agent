@@ -23,6 +23,7 @@ import (
 	"github.com/go-ping/ping"
 	"github.com/gorilla/websocket"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
 	psnet "github.com/shirou/gopsutil/v3/net"
@@ -68,6 +69,13 @@ var (
 			return http.ErrUseLastResponse
 		},
 		Timeout: time.Second * 30,
+	}
+	httpClient3 = &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Timeout:   time.Second * 30,
+		Transport: &http3.RoundTripper{},
 	}
 )
 
@@ -447,11 +455,14 @@ func checkAltSvc(start time.Time, altSvcStr string, taskUrl string, result *pb.T
 
 	altAuthorityHost := ""
 	altAuthorityPort := ""
+	altAuthorityProtocol := ""
 	for _, altSvc := range altSvcList {
+		altAuthorityPort = altSvc.AltAuthority.Port
 		if altSvc.AltAuthority.Host != "" {
 			altAuthorityHost = altSvc.AltAuthority.Host
+			altAuthorityProtocol = altSvc.ProtocolID
+			break
 		}
-		altAuthorityPort = altSvc.AltAuthority.Port
 	}
 	if altAuthorityHost == "" {
 		altAuthorityHost = originalHost
@@ -464,10 +475,12 @@ func checkAltSvc(start time.Time, altSvcStr string, taskUrl string, result *pb.T
 	altAuthorityUrl := "https://" + altAuthorityHost + ":" + altAuthorityPort + "/"
 	req, _ := http.NewRequest("GET", altAuthorityUrl, nil)
 	req.Host = originalHost
-	req.Header.Add("Upgrade", originalHost)
-	req.Header.Add("Connection", "Upgrade")
 
-	resp, err := httpClient.Do(req)
+	client := httpClient
+	if strings.HasPrefix(altAuthorityProtocol, "h3") {
+		client = httpClient3
+	}
+	resp, err := client.Do(req)
 
 	checkHttpResp(altAuthorityUrl, start, resp, err, result)
 }
