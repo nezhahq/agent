@@ -91,10 +91,7 @@ func init() {
 		d := net.Dialer{
 			Timeout: time.Second * 5,
 		}
-		dnsServers := []string{
-			"8.8.4.4:53", "223.5.5.5:53", "94.140.14.140:53", "119.29.29.29:53",
-			"[2001:4860:4860::8844]:53", "[2400:3200::1]:53", "[2a10:50c0::1:ff]:53", "[2402:4e00::]:53",
-		}
+		dnsServers := util.DNSServersAll
 		if len(agentConfig.DNS) > 0 {
 			dnsServers = agentConfig.DNS
 		}
