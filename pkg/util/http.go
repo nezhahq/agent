@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+var DNSServersV4 = []string{"8.8.4.4:53", "223.5.5.5:53", "94.140.14.140:53", "119.29.29.29:53"}
+var DNSServersV6 = []string{"[2001:4860:4860::8844]:53", "[2400:3200::1]:53", "[2a10:50c0::1:ff]:53", "[2402:4e00::]:53"}
+var DNSServersAll = append(DNSServersV4, DNSServersV6...)
+
 func NewSingleStackHTTPClient(httpTimeout, dialTimeout, keepAliveTimeout time.Duration, ipv6 bool) *http.Client {
 	dialer := &net.Dialer{
 		Timeout:   dialTimeout,
@@ -36,9 +40,9 @@ func NewSingleStackHTTPClient(httpTimeout, dialTimeout, keepAliveTimeout time.Du
 func resolveIP(addr string, ipv6 bool) (string, error) {
 	url := strings.Split(addr, ":")
 
-	dnsServers := []string{"[2001:4860:4860::8844]", "[2400:3200::1]", "[2a10:50c0::1:ff]", "[2402:4e00::]"}
+	dnsServers := DNSServersV6
 	if !ipv6 {
-		dnsServers = []string{"8.8.4.4", "223.5.5.5", "94.140.14.140", "119.29.29.29"}
+		dnsServers = DNSServersV4
 	}
 
 	res, err := net.LookupIP(url[0])
@@ -50,7 +54,7 @@ func resolveIP(addr string, ipv6 bool) (string, error) {
 					d := net.Dialer{
 						Timeout: time.Second * 10,
 					}
-					return d.DialContext(ctx, "udp", dnsServers[i]+":53")
+					return d.DialContext(ctx, "udp", dnsServers[i])
 				},
 			}
 			res, err = r.LookupIP(context.Background(), "ip", url[0])
