@@ -406,6 +406,10 @@ func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 
 func checkHttpResp(taskUrl string, start time.Time, resp *http.Response, err error, result *pb.TaskResult) {
 	if err == nil {
+		defer resp.Body.Close()
+		_, err = io.Copy(io.Discard, resp.Body)
+	}
+	if err == nil {
 		// 检查 HTTP Response 状态
 		result.Delay = float32(time.Since(start).Microseconds()) / 1000.0
 		if resp.StatusCode > 399 || resp.StatusCode < 200 {
