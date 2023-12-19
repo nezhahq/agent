@@ -46,7 +46,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	if err != nil {
 		println("host.Info error:", err)
 	} else {
-		if hi.VirtualizationSystem != "" {
+		if hi.virtualizationRole == "guest" {
 			cpuType = "Virtual"
 		} else {
 			cpuType = "Physical"
