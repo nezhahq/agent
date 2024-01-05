@@ -58,17 +58,15 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 		ret.BootTime = hi.BootTime
 	}
 
-	cpuModelCount := make(map[string]int)
 	ci, err := cpu.Info()
 	if err != nil {
 		println("cpu.Info error:", err)
+	}
+	count, err := cpu.Counts(false)
+	if err != nil {
+		println("cpu.Counts error:", err)
 	} else {
-		for i := 0; i < len(ci); i++ {
-			cpuModelCount[ci[i].ModelName]++
-		}
-		for model, count := range cpuModelCount {
-			ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", model, count, cpuType))
-		}
+		ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", ci[0].ModelName, count, cpuType))
 	}
 
 	ret.DiskTotal, _ = getDiskTotalAndUsed(agentConfig)
