@@ -65,7 +65,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	count, err := cpu.Counts(false)
 	if err != nil {
 		println("cpu.Counts error:", err)
-	} else {
+	} else if len(ci) > 0 {
 		ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", ci[0].ModelName, count, cpuType))
 	}
 
