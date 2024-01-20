@@ -11,6 +11,7 @@ require (
 	github.com/dean2021/goss v0.0.0-20230129073947-df90431348f1
 	github.com/ebi-yade/altsvc-go v0.1.1
 	github.com/go-ping/ping v1.1.0
+	github.com/golang/protobuf v1.5.3
 	github.com/gorilla/websocket v1.5.1
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/json-iterator/go v1.1.12
@@ -33,7 +34,6 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
-	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/go-github v17.0.0+incompatible // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect

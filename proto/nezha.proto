@@ -47,6 +47,7 @@ message Task {
     uint64 id = 1;
     uint64 type = 2;
     string data = 3;
+    uint64 server_id = 4;
 }
 
 message TaskResult {
@@ -55,6 +56,7 @@ message TaskResult {
     float delay = 3;
     string data = 4;
     bool successful = 5;
+    uint64 server_id = 6;
 }
 
 message Receipt{
