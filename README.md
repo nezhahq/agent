@@ -15,4 +15,7 @@ Agent of Nezha Monitoring
 </a>
 <a href="https://github.com/Erope" title="卖女孩的小火柴">
   <img src="https://avatars.githubusercontent.com/u/44471469?v=4" width="50;" alt="卖女孩的小火柴"/>
+</a>
+<a href="https://github.com/liuran001" title="笨蛋ovo">
+  <img src="https://avatars.githubusercontent.com/u/32791471?v=4" width="50;" alt="笨蛋ovo"/>
 </a><!--GAMFC_DELIMITER_END-->
