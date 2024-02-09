@@ -393,6 +393,7 @@ func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
 		}
 		result.Delay = float32(stat.AvgRtt.Microseconds()) / 1000.0
 		result.Successful = true
+		result.ServerId = task.ServerId
 	} else {
 		result.Data = err.Error()
 	}
