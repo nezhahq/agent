@@ -52,6 +52,7 @@ type AgentCliParam struct {
 	ReportDelay           int    // 报告间隔
 	TLS                   bool   // 是否使用TLS加密传输至服务端
 	Version               bool   // 当前版本号
+	IPReportPeriod        uint32 // 上报IP间隔
 }
 
 var (
@@ -164,6 +165,7 @@ func main() {
 	flag.BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
 	flag.BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
 	flag.BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
+	flag.Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "IP上报间隔")
 	flag.Parse()
 
 	if agentCliParam.Version {
@@ -201,7 +203,7 @@ func run() {
 	// 上报服务器信息
 	go reportState()
 	// 更新IP信息
-	go monitor.UpdateIP()
+	go monitor.UpdateIP(agentCliParam.IPReportPeriod)
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
