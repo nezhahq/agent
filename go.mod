@@ -14,7 +14,7 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/json-iterator/go v1.1.12
-	github.com/nezhahq/go-github-selfupdate v0.0.0-20240209130611-ee68e0684126
+	github.com/nezhahq/go-github-selfupdate v0.0.0-20240228153918-f04ba1ce11f3
 	github.com/quic-go/quic-go v0.40.1
 	github.com/shirou/gopsutil/v3 v3.23.11
 	github.com/spf13/pflag v1.0.5
