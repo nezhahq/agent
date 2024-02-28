@@ -97,8 +97,8 @@ github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9Gz0M=
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
-github.com/nezhahq/go-github-selfupdate v0.0.0-20240209130611-ee68e0684126 h1:HPHPmxd+jWscmoFZ8924+31cew4Z2amzX66qpvn/f6A=
-github.com/nezhahq/go-github-selfupdate v0.0.0-20240209130611-ee68e0684126/go.mod h1:fOsabb2tjwCe7/kGSsout6oL2cp0sKhOwYQp6fP/Xfg=
+github.com/nezhahq/go-github-selfupdate v0.0.0-20240228153918-f04ba1ce11f3 h1:B2+ZIygi0eDZa8l8sI6hx+RF7Q5ez300Mr3RBL5cWTI=
+github.com/nezhahq/go-github-selfupdate v0.0.0-20240228153918-f04ba1ce11f3/go.mod h1:fOsabb2tjwCe7/kGSsout6oL2cp0sKhOwYQp6fP/Xfg=
 github.com/onsi/ginkgo/v2 v2.9.5 h1:+6Hr4uxzP4XIUyAkg61dWBw8lb/gc4/X5luuxN/EC+Q=
 github.com/onsi/ginkgo/v2 v2.9.5/go.mod h1:tvAoo1QUJwNEU2ITftXTpR7R1RbCzoZUOs3RonqW57k=
 github.com/onsi/gomega v1.27.6 h1:ENqfyGeS5AX/rlXDd/ETokDz93u0YufY1Pgxuy/PvWE=
