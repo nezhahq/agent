@@ -16,12 +16,12 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20240228153918-f04ba1ce11f3
 	github.com/quic-go/quic-go v0.40.1
-	github.com/shirou/gopsutil/v3 v3.23.11
+	github.com/shirou/gopsutil/v3 v3.24.2
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.8.4
-	google.golang.org/grpc v1.60.1
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/grpc v1.62.0
+	google.golang.org/protobuf v1.32.0
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -37,7 +37,7 @@ require (
 	github.com/google/go-github v17.0.0+incompatible // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
-	github.com/google/uuid v1.4.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
@@ -67,7 +67,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/ulikunitz/xz v0.5.11 // indirect
-	github.com/yusufpapurcu/wmi v1.2.3 // indirect
+	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/mock v0.3.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
@@ -76,13 +76,13 @@ require (
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.20.0 // indirect
 	golang.org/x/oauth2 v0.16.0 // indirect
-	golang.org/x/sync v0.5.0 // indirect
-	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/sync v0.6.0 // indirect
+	golang.org/x/sys v0.17.0 // indirect
 	golang.org/x/term v0.16.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20231120223509-83a465c0220f // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240123012728-ef4313101c80 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
