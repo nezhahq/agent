@@ -3,28 +3,34 @@ package monitor
 import (
 	"io"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestGeoIPApi(t *testing.T) {
 	for i := 0; i < len(geoIPApiList); i++ {
 		resp, err := httpGetWithUA(httpClientV4, geoIPApiList[i])
-		assert.Nil(t, err)
+		if err != nil {
+			t.Fatalf("httpGetWithUA(%s) error: %v", geoIPApiList[i], err)
+		}
 		body, err := io.ReadAll(resp.Body)
-		assert.Nil(t, err)
+		if err != nil {
+			t.Fatalf("io.ReadAll(%s) error: %v", geoIPApiList[i], err)
+		}
 		resp.Body.Close()
 		var ip geoIP
 		err = ip.Unmarshal(body)
-		assert.Nil(t, err)
+		if err != nil {
+			t.Fatalf("ip.Unmarshal(%s) error: %v", geoIPApiList[i], err)
+		}
 		t.Logf("%s %s %s", geoIPApiList[i], ip.CountryCode, ip.IP)
-		assert.True(t, ip.IP != "")
-		assert.True(t, ip.CountryCode != "")
+		if ip.IP == "" || ip.CountryCode == "" {
+			t.Fatalf("ip.Unmarshal(%s) error: %v", geoIPApiList[i], err)
+		}
 	}
 }
 
 func TestFetchGeoIP(t *testing.T) {
 	ip := fetchGeoIP(geoIPApiList, false)
-	assert.NotEmpty(t, ip.IP)
-	assert.NotEmpty(t, ip.CountryCode)
+	if ip.IP == "" || ip.CountryCode == "" {
+		t.Fatalf("fetchGeoIP() error: %v", ip)
+	}
 }
