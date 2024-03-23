@@ -13,6 +13,9 @@ Agent of Nezha Monitoring
 <a href="https://github.com/wwng2333" title="Crazy">
   <img src="https://avatars.githubusercontent.com/u/17147265?v=4" width="50;" alt="Crazy"/>
 </a>
+<a href="https://github.com/DarcJC" title="Darc Z.">
+  <img src="https://avatars.githubusercontent.com/u/53445798?v=4" width="50;" alt="Darc Z."/>
+</a>
 <a href="https://github.com/Erope" title="卖女孩的小火柴">
   <img src="https://avatars.githubusercontent.com/u/44471469?v=4" width="50;" alt="卖女孩的小火柴"/>
 </a>
