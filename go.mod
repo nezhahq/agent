@@ -14,12 +14,11 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/json-iterator/go v1.1.12
-	github.com/nezhahq/go-github-selfupdate v0.0.0-20240228153918-f04ba1ce11f3
 	github.com/quic-go/quic-go v0.40.1
 	github.com/shirou/gopsutil/v3 v3.24.3
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
-	google.golang.org/grpc v1.63.0
+	google.golang.org/grpc v1.63.2
 	google.golang.org/protobuf v1.33.0
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -47,6 +46,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/nezhahq/go-github-selfupdate v0.0.0-20240228153918-f04ba1ce11f3 // indirect
 	github.com/onsi/ginkgo/v2 v2.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
