@@ -7,10 +7,23 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+type GPUInfo struct {
+	GPU struct {
+		Cards []struct {
+			PCI struct {
+				Product struct {
+					Name string `json:"name"`
+				} `json:"product"`
+			} `json:"pci"`
+		} `json:"cards"`
+	} `json:"gpu"`
+}
+
 type AgentConfig struct {
 	HardDrivePartitionAllowlist []string
 	NICAllowlist                map[string]bool
 	DNS                         []string
+	GPU							bool
 	v                           *viper.Viper
 }
 

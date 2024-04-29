@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"encoding/json"
 
 	"github.com/dean2021/goss"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -17,6 +18,7 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
+	"github.com/jaypipes/ghw/pkg/gpu"
 
 	"github.com/nezhahq/agent/model"
 )
@@ -42,6 +44,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	var ret model.Host
 
 	var cpuType string
+	var gpuInfo model.GPUInfo
 	hi, err := host.Info()
 	if err != nil {
 		println("host.Info error:", err)
@@ -54,7 +57,11 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 		ret.Platform = hi.Platform
 		ret.PlatformVersion = hi.PlatformVersion
 		ret.Arch = hi.KernelArch
-		ret.Virtualization = hi.VirtualizationSystem
+		if cpuType == "Physical" {
+			ret.Virtualization = ""
+		} else {
+			ret.Virtualization = hi.VirtualizationSystem
+		}
 		ret.BootTime = hi.BootTime
 	}
 
@@ -90,6 +97,27 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 		} else {
 			ret.SwapTotal = ms.Total
 		}
+	}
+	
+	if agentConfig.GPU {
+		gpuModelCount := make(map[string]int)
+		gir, err := gpu.New()
+		if err != nil {
+			println("gpu.New error:", err)
+		}
+		gi := gir.JSONString(true)
+		err = json.Unmarshal([]byte(gi), &gpuInfo)
+		if err != nil {
+			println("JSON unmarshalling failed:", err)
+		}
+		for _, card := range gpuInfo.GPU.Cards {
+        	gpuModelCount[card.PCI.Product.Name]++
+    	}
+    	for name := range gpuModelCount {
+        	ret.GPU = append(ret.GPU, fmt.Sprintf("%s", name))
+    	}
+	} else {
+		ret.GPU = nil
 	}
 
 	cachedBootTime = time.Unix(int64(hi.BootTime), 0)

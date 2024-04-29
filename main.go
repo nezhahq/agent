@@ -164,6 +164,7 @@ func main() {
 	flag.BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
 	flag.BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
 	flag.BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
+	flag.BoolVar(&agentConfig.GPU, "gpu", false, "上报GPU信息")
 	flag.BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 	flag.Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
 	flag.Parse()
