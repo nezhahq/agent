@@ -46,7 +46,7 @@ type Host struct {
 	Platform        string
 	PlatformVersion string
 	CPU             []string
-	GPU				[]string
+	GPU             []string
 	MemTotal        uint64
 	DiskTotal       uint64
 	SwapTotal       uint64
@@ -72,6 +72,6 @@ func (h *Host) PB() *pb.Host {
 		Ip:              h.IP,
 		CountryCode:     h.CountryCode,
 		Version:         h.Version,
-		Gpu:			 h.GPU,
+		Gpu:             h.GPU,
 	}
 }
