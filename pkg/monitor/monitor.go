@@ -54,7 +54,11 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 		ret.Platform = hi.Platform
 		ret.PlatformVersion = hi.PlatformVersion
 		ret.Arch = hi.KernelArch
-		ret.Virtualization = hi.VirtualizationSystem
+		if cpuType == "Physical" {
+			ret.Virtualization = ""
+		} else {
+			ret.Virtualization = hi.VirtualizationSystem
+		}
 		ret.BootTime = hi.BootTime
 	}
 
