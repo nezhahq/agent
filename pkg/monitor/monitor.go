@@ -67,7 +67,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	if err != nil {
 		println("cpu.Info error:", err)
 	} else {
-		if runtime.GOOS == "linux" && runtime.GOOS == "windows" {
+		if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
 			for i := 0; i < len(ci); i++ {
 				cpuModelCount[ci[i].ModelName]++
 			}
