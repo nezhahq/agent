@@ -102,13 +102,23 @@ func runService(cmd *cobra.Command, args []string) {
 
 	switch mode {
 	case "install":
+		initName := s.Platform()
+		log.Println("Init 系统为:", initName)
 		if err = s.Install(); err != nil {
 			log.Fatal("安装服务时出错: ", err)
+		} else {
+			log.Println("服务安装成功！")
+		}
+		// 安装后重启
+		if err = s.Restart(); err != nil {
+			log.Fatal("重启服务时出错: ", err)
 		}
 	case "uninstall":
 		s.Stop()
 		if err = s.Uninstall(); err != nil {
 			log.Fatal("卸载服务时出错: ", err)
+		} else {
+			log.Println("服务卸载成功！")
 		}
 	case "start":
 		if err = s.Start(); err != nil {
