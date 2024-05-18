@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlecAivazis/survey/v2"
 	bpc "github.com/DaRealFreak/cloudflare-bp-go"
 	"github.com/blang/semver"
 	"github.com/ebi-yade/altsvc-go"
@@ -24,10 +23,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
 	"github.com/quic-go/quic-go/http3"
-	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
-	psnet "github.com/shirou/gopsutil/v3/net"
-	flag "github.com/spf13/pflag"
+	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -61,6 +58,15 @@ var (
 	client  pb.NezhaServiceClient
 	inited  bool
 )
+
+var agentCmd = &cobra.Command{
+	Use:              "agent",
+	Run:              func(cmd *cobra.Command, args []string) {
+				run()
+		},
+	PreRun:           preRun,
+	PersistentPreRun: persistPreRun,
+}
 
 var (
 	agentCliParam AgentCliParam
@@ -108,7 +114,6 @@ func init() {
 		}
 		return nil, err
 	}
-	flag.CommandLine.ParseErrorsWhitelist.UnknownFlags = true
 
 	http.DefaultClient.Timeout = time.Second * 5
 	httpClient.Transport = bpc.AddCloudFlareByPass(httpClient.Transport, bpc.Options{
@@ -124,10 +129,32 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+
+	// 初始化运行参数
+	agentCmd.PersistentFlags().StringVarP(&agentCliParam.Server, "server", "s", "localhost:5555", "管理面板RPC端口")
+	agentCmd.PersistentFlags().StringVarP(&agentCliParam.ClientSecret, "password", "p", "", "Agent连接Secret")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
+	agentCmd.Flags().BoolVarP(&agentCliParam.Debug, "debug", "d", false, "开启调试信息")
+	agentCmd.Flags().IntVar(&agentCliParam.ReportDelay, "report-delay", 1, "系统状态上报间隔")
+	agentCmd.Flags().BoolVar(&agentCliParam.SkipConnectionCount, "skip-conn", false, "不监控连接数")
+	agentCmd.Flags().BoolVar(&agentCliParam.SkipProcsCount, "skip-procs", false, "不监控进程数")
+	agentCmd.Flags().BoolVar(&agentCliParam.DisableCommandExecute, "disable-command-execute", false, "禁止在此机器上执行命令")
+	agentCmd.Flags().BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
+	agentCmd.Flags().BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
+	agentCmd.Flags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
+	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
+
 	agentConfig.Read(filepath.Dir(ex) + "/config.yml")
 }
 
 func main() {
+	if err := agentCmd.Execute(); err != nil {
+        fmt.Println(err)
+        os.Exit(1)
+    }
+}
+
+func persistPreRun(cmd *cobra.Command, args []string) {
 	// windows环境处理
 	if runtime.GOOS == "windows" {
 		hostArch, err := host.KernelArch()
@@ -147,48 +174,26 @@ func main() {
 			panic(fmt.Sprintf("与当前系统不匹配，当前运行 %s_%s, 需要下载 %s_%s", runtime.GOOS, arch, runtime.GOOS, hostArch))
 		}
 	}
+}
 
+func preRun(cmd *cobra.Command, args []string) {
 	// 来自于 GoReleaser 的版本号
 	monitor.Version = version
 
-	// 初始化运行参数
-	var isEditAgentConfig bool
-	flag.BoolVarP(&agentCliParam.Debug, "debug", "d", false, "开启调试信息")
-	flag.BoolVarP(&isEditAgentConfig, "edit-agent-config", "c", false, "修改要监控的网卡/分区名单，修改自定义 DNS")
-	flag.StringVarP(&agentCliParam.Server, "server", "s", "localhost:5555", "管理面板RPC端口")
-	flag.StringVarP(&agentCliParam.ClientSecret, "password", "p", "", "Agent连接Secret")
-	flag.IntVar(&agentCliParam.ReportDelay, "report-delay", 1, "系统状态上报间隔")
-	flag.BoolVar(&agentCliParam.SkipConnectionCount, "skip-conn", false, "不监控连接数")
-	flag.BoolVar(&agentCliParam.SkipProcsCount, "skip-procs", false, "不监控进程数")
-	flag.BoolVar(&agentCliParam.DisableCommandExecute, "disable-command-execute", false, "禁止在此机器上执行命令")
-	flag.BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
-	flag.BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
-	flag.BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
-	flag.BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
-	flag.Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
-	flag.Parse()
-
 	if agentCliParam.Version {
 		fmt.Println(version)
-		return
-	}
-
-	if isEditAgentConfig {
-		editAgentConfig()
-		return
+		os.Exit(0)
 	}
 
 	if agentCliParam.ClientSecret == "" {
-		flag.Usage()
-		return
+		cmd.Help()
+		os.Exit(1)
 	}
 
 	if agentCliParam.ReportDelay < 1 || agentCliParam.ReportDelay > 4 {
 		println("report-delay 的区间为 1-4")
-		return
+		os.Exit(1)
 	}
-
-	run()
 }
 
 func run() {
@@ -627,98 +632,6 @@ func handleTerminalTask(task *pb.Task) {
 			tty.Setsize(resizeMessage.Cols, resizeMessage.Rows)
 		}
 	}
-}
-
-// 修改Agent要监控的网卡与硬盘分区
-func editAgentConfig() {
-	nc, err := psnet.IOCounters(true)
-	if err != nil {
-		panic(err)
-	}
-	var nicAllowlistOptions []string
-	for _, v := range nc {
-		nicAllowlistOptions = append(nicAllowlistOptions, v.Name)
-	}
-
-	var diskAllowlistOptions []string
-	diskList, err := disk.Partitions(false)
-	if err != nil {
-		panic(err)
-	}
-	for _, p := range diskList {
-		diskAllowlistOptions = append(diskAllowlistOptions, fmt.Sprintf("%s\t%s\t%s", p.Mountpoint, p.Fstype, p.Device))
-	}
-
-	var qs = []*survey.Question{
-		{
-			Name: "nic",
-			Prompt: &survey.MultiSelect{
-				Message: "选择要监控的网卡",
-				Options: nicAllowlistOptions,
-			},
-		},
-		{
-			Name: "disk",
-			Prompt: &survey.MultiSelect{
-				Message: "选择要监控的硬盘分区",
-				Options: diskAllowlistOptions,
-			},
-		},
-		{
-			Name: "dns",
-			Prompt: &survey.Input{
-				Message: "自定义 DNS，可输入空格跳过，如 1.1.1.1:53,1.0.0.1:53",
-				Default: strings.Join(agentConfig.DNS, ","),
-			},
-		},
-	}
-
-	answers := struct {
-		Nic  []string
-		Disk []string
-		DNS  string
-	}{}
-
-	err = survey.Ask(qs, &answers, survey.WithValidator(survey.Required))
-	if err != nil {
-		fmt.Println("选择错误", err.Error())
-		return
-	}
-
-	agentConfig.HardDrivePartitionAllowlist = []string{}
-	for _, v := range answers.Disk {
-		agentConfig.HardDrivePartitionAllowlist = append(agentConfig.HardDrivePartitionAllowlist, strings.Split(v, "\t")[0])
-	}
-
-	agentConfig.NICAllowlist = make(map[string]bool)
-	for _, v := range answers.Nic {
-		agentConfig.NICAllowlist[v] = true
-	}
-
-	dnsServers := strings.TrimSpace(answers.DNS)
-
-	if dnsServers != "" {
-		agentConfig.DNS = strings.Split(dnsServers, ",")
-		for _, s := range agentConfig.DNS {
-			host, _, err := net.SplitHostPort(s)
-			if err == nil {
-				if net.ParseIP(host) == nil {
-					err = errors.New("格式错误")
-				}
-			}
-			if err != nil {
-				panic(fmt.Sprintf("自定义 DNS 格式错误：%s %v", s, err))
-			}
-		}
-	} else {
-		agentConfig.DNS = []string{}
-	}
-
-	if err = agentConfig.Save(); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("修改自定义配置成功，重启 Agent 后生效")
 }
 
 func println(v ...interface{}) {

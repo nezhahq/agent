@@ -27,7 +27,7 @@ builds:
         goarch: arm
       - goos: windows
         goarch: arm64
-    main: .
+    main: ./cmd/agent
     binary: nezha-agent
   - id: darwin-amd64
     env:
@@ -40,7 +40,7 @@ builds:
       - darwin
     goarch:
       - amd64
-    main: .
+    main: ./cmd/agent
     binary: nezha-agent
   - id: darwin-arm64
     env:
@@ -53,7 +53,7 @@ builds:
       - darwin
     goarch:
       - arm64
-    main: .
+    main: ./cmd/agent
     binary: nezha-agent
 universal_binaries:
   - name_template: "nezha-agent"
