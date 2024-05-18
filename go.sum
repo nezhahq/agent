@@ -105,6 +105,8 @@ github.com/nezhahq/service v0.0.0-20240518043736-9ae0db11e8df h1:V9mIEc9CKm+hFuP
 github.com/nezhahq/service v0.0.0-20240518043736-9ae0db11e8df/go.mod h1:1CemEvuMOM4B88ckxMZvLT0dehlP5+bqQOYRLMslSdE=
 github.com/nezhahq/service v0.0.0-20240518100746-f22fc3c61e5d h1:OmxtpsZfT0wLBgwo0uw4vusU+nEVWljye0vWfRpbFig=
 github.com/nezhahq/service v0.0.0-20240518100746-f22fc3c61e5d/go.mod h1:1CemEvuMOM4B88ckxMZvLT0dehlP5+bqQOYRLMslSdE=
+github.com/nezhahq/service v0.0.0-20240518110122-594be3ba1962 h1:2zrICSRNedjDMlmDb58B03QHcLvpKIBe931FV7kHvas=
+github.com/nezhahq/service v0.0.0-20240518110122-594be3ba1962/go.mod h1:1CemEvuMOM4B88ckxMZvLT0dehlP5+bqQOYRLMslSdE=
 github.com/onsi/ginkgo/v2 v2.9.5 h1:+6Hr4uxzP4XIUyAkg61dWBw8lb/gc4/X5luuxN/EC+Q=
 github.com/onsi/ginkgo/v2 v2.9.5/go.mod h1:tvAoo1QUJwNEU2ITftXTpR7R1RbCzoZUOs3RonqW57k=
 github.com/onsi/gomega v1.27.6 h1:ENqfyGeS5AX/rlXDd/ETokDz93u0YufY1Pgxuy/PvWE=

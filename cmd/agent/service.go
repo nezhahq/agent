@@ -100,6 +100,11 @@ func runService(cmd *cobra.Command, args []string) {
 		log.Fatal("创建服务时出错: ", err)
 	}
 
+	if mode == "install" {
+		initName := s.Platform()
+		log.Println("Init system is:", initName)
+	}
+
 	err = service.Control(s, mode)
 	if err != nil {
 		log.Fatal(err)
