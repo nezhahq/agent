@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
-	"github.com/kardianos/service"
+	"github.com/nezhahq/service"
 )
 
 type program struct {
@@ -100,40 +100,8 @@ func runService(cmd *cobra.Command, args []string) {
 		log.Fatal("创建服务时出错: ", err)
 	}
 
-	switch mode {
-	case "install":
-		initName := s.Platform()
-		log.Println("Init 系统为:", initName)
-		if err = s.Install(); err != nil {
-			log.Fatal("安装服务时出错: ", err)
-		} else {
-			log.Println("服务安装成功！")
-		}
-		// 安装后重启
-		if err = s.Restart(); err != nil {
-			log.Fatal("重启服务时出错: ", err)
-		}
-	case "uninstall":
-		s.Stop()
-		if err = s.Uninstall(); err != nil {
-			log.Fatal("卸载服务时出错: ", err)
-		} else {
-			log.Println("服务卸载成功！")
-		}
-	case "start":
-		if err = s.Start(); err != nil {
-			log.Fatal("启动服务时出错: ", err)
-		}
-	case "stop":
-		if err = s.Stop(); err != nil {
-			log.Fatal("停止服务时出错: ", err)
-		}
-	case "restart":
-		if err = s.Restart(); err != nil {
-			log.Fatal("重启服务时出错: ", err)
-		}
-	default:
-		cmd.Help()
-		os.Exit(1)
+	err = service.Control(s, mode)
+	if err != nil {
+		log.Fatal(err)
 	}
 }

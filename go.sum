@@ -73,8 +73,6 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
 github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
-github.com/kardianos/service v1.2.2 h1:ZvePhAHfvo0A7Mftk/tEzqEZ7Q4lgnR8sGz4xu1YX60=
-github.com/kardianos/service v1.2.2/go.mod h1:CIMRFEJVL+0DS1a3Nx06NaMn4Dz63Ng6O7dl0qH0zVM=
 github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 h1:Z9n2FFNUXsshfwJMBgNA0RU6/i7WVaAegv3PtuIHPMs=
 github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51/go.mod h1:CzGEWj7cYgsdH8dAjBGEr58BoE7ScuLd+fwFZ44+/x8=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
@@ -103,6 +101,10 @@ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9G
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
 github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d h1:gUt6JLTE/HH7qXS5F7SSYrmsj8NXx3i5CaF6mzYw6pA=
 github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d/go.mod h1:fOsabb2tjwCe7/kGSsout6oL2cp0sKhOwYQp6fP/Xfg=
+github.com/nezhahq/service v0.0.0-20240518043736-9ae0db11e8df h1:V9mIEc9CKm+hFuPmrEjByCScbWZGoWLOUcPjrAis9ew=
+github.com/nezhahq/service v0.0.0-20240518043736-9ae0db11e8df/go.mod h1:1CemEvuMOM4B88ckxMZvLT0dehlP5+bqQOYRLMslSdE=
+github.com/nezhahq/service v0.0.0-20240518100746-f22fc3c61e5d h1:OmxtpsZfT0wLBgwo0uw4vusU+nEVWljye0vWfRpbFig=
+github.com/nezhahq/service v0.0.0-20240518100746-f22fc3c61e5d/go.mod h1:1CemEvuMOM4B88ckxMZvLT0dehlP5+bqQOYRLMslSdE=
 github.com/onsi/ginkgo/v2 v2.9.5 h1:+6Hr4uxzP4XIUyAkg61dWBw8lb/gc4/X5luuxN/EC+Q=
 github.com/onsi/ginkgo/v2 v2.9.5/go.mod h1:tvAoo1QUJwNEU2ITftXTpR7R1RbCzoZUOs3RonqW57k=
 github.com/onsi/gomega v1.27.6 h1:ENqfyGeS5AX/rlXDd/ETokDz93u0YufY1Pgxuy/PvWE=

@@ -14,8 +14,8 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/json-iterator/go v1.1.12
-	github.com/kardianos/service v1.2.2
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d
+	github.com/nezhahq/service v0.0.0-20240518100746-f22fc3c61e5d
 	github.com/quic-go/quic-go v0.40.1
 	github.com/shirou/gopsutil/v3 v3.24.4
 	github.com/spf13/cobra v1.8.0

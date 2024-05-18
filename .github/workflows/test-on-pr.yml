@@ -21,7 +21,7 @@ jobs:
           go test -v ./...
       - name: Build test
         run: |
-          go build 
+          go build ./cmd/agent
       - name: Run Gosec Security Scanner
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
