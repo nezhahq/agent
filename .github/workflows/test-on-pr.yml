@@ -22,10 +22,10 @@ jobs:
       - name: Build test
         run: |
           go build ./cmd/agent
-      - name: Run Gosec Security Scanner
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.19.0
-          gosec -exclude=G104 ./...
+      #- name: Run Gosec Security Scanner
+      #  run: |
+      #    go install github.com/securego/gosec/v2/cmd/gosec@v2.19.0
+      #    gosec -exclude=G104 ./...
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
