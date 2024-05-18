@@ -36,7 +36,7 @@ func DownloadDependency() {
 		return
 	}
 
-	resp, err := http.Get("https://dn-dao-github-mirror.daocloud.io/rprichard/winpty/releases/download/0.4.3/winpty-0.4.3-msvc2015.zip")
+	resp, err := http.Get("https://github.com/rprichard/winpty/releases/download/0.4.3/winpty-0.4.3-msvc2015.zip")
 	if err != nil {
 		log.Println("NEZHA>> wintty 下载失败", err)
 		return
