@@ -105,6 +105,8 @@ github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d h1:gU
 github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d/go.mod h1:fOsabb2tjwCe7/kGSsout6oL2cp0sKhOwYQp6fP/Xfg=
 github.com/nezhahq/service v0.0.0-20240518110122-594be3ba1962 h1:2zrICSRNedjDMlmDb58B03QHcLvpKIBe931FV7kHvas=
 github.com/nezhahq/service v0.0.0-20240518110122-594be3ba1962/go.mod h1:1CemEvuMOM4B88ckxMZvLT0dehlP5+bqQOYRLMslSdE=
+github.com/nezhahq/service v0.0.0-20240519060034-90701692f8ef h1:nC+Cxc9MyBFT+snkl5lBUpxGqSGqXv9B2AMHtZOtXzo=
+github.com/nezhahq/service v0.0.0-20240519060034-90701692f8ef/go.mod h1:i6zO7Vzuv5+mdaCzHrvAC4U63W59uXmX9n6o7p4PJGk=
 github.com/onsi/ginkgo/v2 v2.9.5 h1:+6Hr4uxzP4XIUyAkg61dWBw8lb/gc4/X5luuxN/EC+Q=
 github.com/onsi/ginkgo/v2 v2.9.5/go.mod h1:tvAoo1QUJwNEU2ITftXTpR7R1RbCzoZUOs3RonqW57k=
 github.com/onsi/gomega v1.27.6 h1:ENqfyGeS5AX/rlXDd/ETokDz93u0YufY1Pgxuy/PvWE=
@@ -219,6 +221,8 @@ golang.org/x/sys v0.8.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.11.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.19.0 h1:q5f1RH2jigJ1MoAWp2KTp3gm5zAGFUTarQZ5U386+4o=
 golang.org/x/sys v0.19.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/sys v0.20.0 h1:Od9JTbYCk261bKm4M/mw7AklTlFYIa0bIp9BgSm1S8Y=
+golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
 golang.org/x/term v0.5.0/go.mod h1:jMB1sMXY+tzblOD4FWmEbocvup2/aLOaQEp7JmGp78k=

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,6 +26,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/spf13/cobra"
+	"github.com/nezhahq/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -52,17 +54,27 @@ type AgentCliParam struct {
 	IPReportPeriod        uint32 // 上报IP间隔
 }
 
+type program struct {
+	exit    chan struct{}
+	service service.Service
+}
+
 var (
 	version string
 	arch    string
 	client  pb.NezhaServiceClient
 	inited  bool
+	logger  service.Logger
 )
 
 var agentCmd = &cobra.Command{
 	Use:              "agent",
 	Run:              func(cmd *cobra.Command, args []string) {
-				run()
+				if runtime.GOOS == "darwin" {
+					run() // macOS launchctl 如使用 runService 则无法启动，原因未知
+				} else {
+					runService("")
+				}
 		},
 	PreRun:           preRun,
 	PersistentPreRun: persistPreRun,
@@ -196,6 +208,33 @@ func preRun(cmd *cobra.Command, args []string) {
 	}
 }
 
+func (p *program) Start(s service.Service) error {
+	go p.run()
+	return nil
+}
+
+func (p *program) Stop(s service.Service) error {
+	close(p.exit)
+	if service.Interactive() {
+		os.Exit(0)
+	}
+	return nil
+}
+
+func (p *program) run() {
+	defer func() {
+		if service.Interactive() {
+			p.Stop(p.service)
+		} else {
+			p.service.Stop()
+		}
+	}()
+
+	run()
+
+	return
+}
+
 func run() {
 	auth := model.AuthHandler{
 		ClientSecret: agentCliParam.ClientSecret,
@@ -271,6 +310,74 @@ func run() {
 		err = receiveTasks(tasks)
 		println("receiveTasks exit to main：", err)
 		retry()
+	}
+}
+
+func runService(action string) {
+	var tlsoption string
+
+	dir, err := os.Getwd()
+    if err != nil {
+        println("获取当前工作目录时出错: ", err)
+        return
+    }
+
+	if agentCliParam.TLS {
+		tlsoption = "--tls"
+	}
+
+	svcConfig := &service.Config{
+		Name:             "nezha-agent",
+		DisplayName:      "Nezha Agent",
+		Description:      "哪吒探针监控端",
+		Arguments:   []string{
+			"-s", agentCliParam.Server,
+			"-p", agentCliParam.ClientSecret,
+			tlsoption,
+		},
+		WorkingDirectory: dir,
+	}
+
+	prg := &program{
+		exit: make(chan struct{}),
+	}
+	s, err := service.New(prg, svcConfig)
+	if err != nil {
+		log.Fatal("创建服务时出错: ", err)
+	}
+	prg.service = s
+
+	errs := make(chan error, 5)
+	logger, err = s.Logger(errs)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go func() {
+		for {
+			err := <-errs
+			if err != nil {
+				log.Print(err)
+			}
+		}
+	}()
+
+	if action == "install" {
+		initName := s.Platform()
+		log.Println("Init system is:", initName)
+	}
+
+	if len(action) != 0 {
+		err := service.Control(s, action)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	err = s.Run()
+	if err != nil {
+		logger.Error(err)
 	}
 }
 
