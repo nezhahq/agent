@@ -78,7 +78,7 @@ checksum:
 snapshot:
   name_template: "nezha-agent"
 archives:
-  - name_template: "nezha-agent_{{ .Os }}_{{ .Arch }}"
+  - name_template: "nezha-agent_{{ .Os }}_{{ .Arch }}{{ if contains .BuildTags \"windows10\" }}_windows10{{ end }}"
     format: zip
     files:
       - none*
