@@ -29,6 +29,21 @@ builds:
         goarch: arm64
     main: ./cmd/agent
     binary: nezha-agent
+  - id: windows10-universal
+    env:
+      - CGO_ENABLED=0
+    tags:
+      - windows10
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.arch={{.Arch}}
+    goos:
+      - windows
+    goarch:
+      - arm64
+      - amd64
+      - 386
+    main: ./cmd/agent
+    binary: nezha-agent
   - id: darwin-amd64
     env:
       - CGO_ENABLED=1
