@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/DaRealFreak/cloudflare-bp-go v1.0.4
+	github.com/UserExistsError/conpty v0.1.3
 	github.com/artdarek/go-unzip v1.0.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/creack/pty v1.1.21
@@ -15,7 +16,7 @@ require (
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/json-iterator/go v1.1.12
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d
-	github.com/nezhahq/service v0.0.0-20240518110122-594be3ba1962
+	github.com/nezhahq/service v0.0.0-20240519060034-90701692f8ef
 	github.com/quic-go/quic-go v0.40.1
 	github.com/shirou/gopsutil/v3 v3.24.4
 	github.com/spf13/cobra v1.8.0
@@ -77,7 +78,7 @@ require (
 	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/oauth2 v0.17.0 // indirect
 	golang.org/x/sync v0.6.0 // indirect
-	golang.org/x/sys v0.19.0 // indirect
+	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/term v0.17.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -22,6 +23,7 @@ import (
 	"github.com/go-ping/ping"
 	"github.com/gorilla/websocket"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
+	"github.com/nezhahq/service"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/spf13/cobra"
@@ -52,18 +54,28 @@ type AgentCliParam struct {
 	IPReportPeriod        uint32 // 上报IP间隔
 }
 
+type program struct {
+	exit    chan struct{}
+	service service.Service
+}
+
 var (
 	version string
 	arch    string
 	client  pb.NezhaServiceClient
 	inited  bool
+	logger  service.Logger
 )
 
 var agentCmd = &cobra.Command{
-	Use:              "agent",
-	Run:              func(cmd *cobra.Command, args []string) {
-				run()
-		},
+	Use: "agent",
+	Run: func(cmd *cobra.Command, args []string) {
+		if runtime.GOOS == "darwin" {
+			run() // macOS launchctl 如使用 runService 则无法启动，原因未知
+		} else {
+			runService("")
+		}
+	},
 	PreRun:           preRun,
 	PersistentPreRun: persistPreRun,
 }
@@ -149,9 +161,9 @@ func init() {
 
 func main() {
 	if err := agentCmd.Execute(); err != nil {
-        fmt.Println(err)
-        os.Exit(1)
-    }
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }
 
 func persistPreRun(cmd *cobra.Command, args []string) {
@@ -194,6 +206,33 @@ func preRun(cmd *cobra.Command, args []string) {
 		println("report-delay 的区间为 1-4")
 		os.Exit(1)
 	}
+}
+
+func (p *program) Start(s service.Service) error {
+	go p.run()
+	return nil
+}
+
+func (p *program) Stop(s service.Service) error {
+	close(p.exit)
+	if service.Interactive() {
+		os.Exit(0)
+	}
+	return nil
+}
+
+func (p *program) run() {
+	defer func() {
+		if service.Interactive() {
+			p.Stop(p.service)
+		} else {
+			p.service.Stop()
+		}
+	}()
+
+	run()
+
+	return
 }
 
 func run() {
@@ -271,6 +310,74 @@ func run() {
 		err = receiveTasks(tasks)
 		println("receiveTasks exit to main：", err)
 		retry()
+	}
+}
+
+func runService(action string) {
+	var tlsoption string
+
+	dir, err := os.Getwd()
+	if err != nil {
+		println("获取当前工作目录时出错: ", err)
+		return
+	}
+
+	if agentCliParam.TLS {
+		tlsoption = "--tls"
+	}
+
+	svcConfig := &service.Config{
+		Name:        "nezha-agent",
+		DisplayName: "Nezha Agent",
+		Description: "哪吒探针监控端",
+		Arguments: []string{
+			"-s", agentCliParam.Server,
+			"-p", agentCliParam.ClientSecret,
+			tlsoption,
+		},
+		WorkingDirectory: dir,
+	}
+
+	prg := &program{
+		exit: make(chan struct{}),
+	}
+	s, err := service.New(prg, svcConfig)
+	if err != nil {
+		log.Fatal("创建服务时出错: ", err)
+	}
+	prg.service = s
+
+	errs := make(chan error, 5)
+	logger, err = s.Logger(errs)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go func() {
+		for {
+			err := <-errs
+			if err != nil {
+				log.Print(err)
+			}
+		}
+	}()
+
+	if action == "install" {
+		initName := s.Platform()
+		log.Println("Init system is:", initName)
+	}
+
+	if len(action) != 0 {
+		err := service.Control(s, action)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	err = s.Run()
+	if err != nil {
+		logger.Error(err)
 	}
 }
 

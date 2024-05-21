@@ -1,16 +1,15 @@
 package main
 
 import (
-	"fmt"
-	"strings"
-	"net"
 	"errors"
+	"fmt"
+	"net"
+	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/shirou/gopsutil/v3/disk"
 	psnet "github.com/shirou/gopsutil/v3/net"
-
+	"github.com/spf13/cobra"
 )
 
 var editCmd = &cobra.Command{
