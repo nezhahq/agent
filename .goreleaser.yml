@@ -25,8 +25,6 @@ builds:
     ignore:
       - goos: windows
         goarch: arm
-      - goos: windows
-        goarch: arm64
     main: ./cmd/agent
     binary: nezha-agent
   - id: darwin-amd64
