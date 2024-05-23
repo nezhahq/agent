@@ -193,6 +193,18 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		}
 	}
 
+	temperatures, err := host.SensorsTemperatures()
+	if err != nil {
+		println("host.SensorsTemperatures error:", err)
+	} else {
+		for _, t := range temperatures {
+			ret.Temperatures = append(ret.Temperatures, model.SensorTemperature{
+				Name:        t.SensorKey,
+				Temperature: t.Temperature,
+			})
+		}
+	}
+
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
 	ret.Uptime = uint64(time.Since(cachedBootTime).Seconds())
