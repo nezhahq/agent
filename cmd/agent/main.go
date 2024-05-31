@@ -71,9 +71,9 @@ var agentCmd = &cobra.Command{
 	Use: "agent",
 	Run: func(cmd *cobra.Command, args []string) {
 		if runtime.GOOS == "darwin" {
-			run() // macOS launchctl 如使用 runService 则无法启动，原因未知
+			run() // https://github.com/golang/go/issues/59229
 		} else {
-			runService("")
+			runService("", nil)
 		}
 	},
 	PreRun:           preRun,
@@ -146,14 +146,14 @@ func init() {
 	agentCmd.PersistentFlags().StringVarP(&agentCliParam.Server, "server", "s", "localhost:5555", "管理面板RPC端口")
 	agentCmd.PersistentFlags().StringVarP(&agentCliParam.ClientSecret, "password", "p", "", "Agent连接Secret")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
-	agentCmd.Flags().BoolVarP(&agentCliParam.Debug, "debug", "d", false, "开启调试信息")
-	agentCmd.Flags().IntVar(&agentCliParam.ReportDelay, "report-delay", 1, "系统状态上报间隔")
-	agentCmd.Flags().BoolVar(&agentCliParam.SkipConnectionCount, "skip-conn", false, "不监控连接数")
-	agentCmd.Flags().BoolVar(&agentCliParam.SkipProcsCount, "skip-procs", false, "不监控进程数")
-	agentCmd.Flags().BoolVar(&agentCliParam.DisableCommandExecute, "disable-command-execute", false, "禁止在此机器上执行命令")
-	agentCmd.Flags().BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
-	agentCmd.Flags().BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
-	agentCmd.Flags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
+	agentCmd.PersistentFlags().BoolVarP(&agentCliParam.Debug, "debug", "d", false, "开启调试信息")
+	agentCmd.PersistentFlags().IntVar(&agentCliParam.ReportDelay, "report-delay", 1, "系统状态上报间隔")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.SkipConnectionCount, "skip-conn", false, "不监控连接数")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.SkipProcsCount, "skip-procs", false, "不监控进程数")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableCommandExecute, "disable-command-execute", false, "禁止在此机器上执行命令")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
+	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
 	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 
 	agentConfig.Read(filepath.Dir(ex) + "/config.yml")
@@ -313,28 +313,18 @@ func run() {
 	}
 }
 
-func runService(action string) {
-	var tlsoption string
-
+func runService(action string, flags []string) {
 	dir, err := os.Getwd()
 	if err != nil {
 		println("获取当前工作目录时出错: ", err)
 		return
 	}
 
-	if agentCliParam.TLS {
-		tlsoption = "--tls"
-	}
-
 	svcConfig := &service.Config{
-		Name:        "nezha-agent",
-		DisplayName: "Nezha Agent",
-		Description: "哪吒探针监控端",
-		Arguments: []string{
-			"-s", agentCliParam.Server,
-			"-p", agentCliParam.ClientSecret,
-			tlsoption,
-		},
+		Name:             "nezha-agent",
+		DisplayName:      "Nezha Agent",
+		Description:      "哪吒探针监控端",
+		Arguments:        flags,
 		WorkingDirectory: dir,
 	}
 

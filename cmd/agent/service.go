@@ -1,10 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 )
+
+type AgentCliFlags struct {
+	IsSpecified bool
+	Flag        string
+	Value       string
+}
 
 var serviceCmd = &cobra.Command{
 	Use:    "service <install/uninstall/start/stop/restart>",
@@ -33,6 +40,32 @@ func servicePreRun(cmd *cobra.Command, args []string) {
 }
 
 func serviceActions(cmd *cobra.Command, args []string) {
+	var agentCliFlags []string
+
+	flags := []AgentCliFlags{
+		{agentCliParam.Server != "localhost:5555", "-s", agentCliParam.Server},
+		{agentCliParam.ClientSecret != "", "-p", agentCliParam.ClientSecret},
+		{agentCliParam.TLS, "--tls", ""},
+		{agentCliParam.Debug, "-d", ""},
+		{agentCliParam.ReportDelay != 1, "--report-delay", fmt.Sprint(agentCliParam.ReportDelay)},
+		{agentCliParam.SkipConnectionCount, "--skip-conn", ""},
+		{agentCliParam.SkipProcsCount, "--skip-procs", ""},
+		{agentCliParam.DisableCommandExecute, "--disable-command-execute", ""},
+		{agentCliParam.DisableAutoUpdate, "--disable-auto-update", ""},
+		{agentCliParam.DisableForceUpdate, "--disable-force-update", ""},
+		{agentCliParam.IPReportPeriod != 30*60, "-u", fmt.Sprint(agentCliParam.IPReportPeriod)},
+	}
+
+	for _, f := range flags {
+		if f.IsSpecified {
+			if f.Value == "" {
+				agentCliFlags = append(agentCliFlags, f.Flag)
+			} else {
+				agentCliFlags = append(agentCliFlags, f.Flag, f.Value)
+			}
+		}
+	}
+
 	action := args[0]
-	runService(action)
+	runService(action, agentCliFlags)
 }
