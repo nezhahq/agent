@@ -193,15 +193,23 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		}
 	}
 
-	temperatures, err := host.SensorsTemperatures()
+	ti, err := host.SensorsTemperatures()
 	if err != nil {
 		println("host.SensorsTemperatures error:", err)
 	} else {
-		for _, t := range temperatures {
-			ret.Temperatures = append(ret.Temperatures, model.SensorTemperature{
-				Name:        t.SensorKey,
-				Temperature: t.Temperature,
-			})
+		cpuSensorKeys := []string{
+			"TC0D", "coretemp_package_id_0",
+			"ACPI\\ThermalZone\\TZ0__0", "ACPI\\ThermalZone\\CPUZ_0",
+			"ACPI\\ThermalZone\\TZ00_0", "ACPI\\ThermalZone\\TZ001_0",
+			"ACPI\\ThermalZone\\THM0_0",
+		}
+		for _, t := range ti {
+			if isListContainsStr(cpuSensorKeys, t.SensorKey) {
+				ret.Temperatures = append(ret.Temperatures, model.SensorTemperature{
+					Name:        t.SensorKey,
+					Temperature: t.Temperature,
+				})
+			}
 		}
 	}
 
