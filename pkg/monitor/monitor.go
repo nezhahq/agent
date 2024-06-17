@@ -37,6 +37,14 @@ var (
 	cachedBootTime                                                             time.Time
 )
 
+// 获取设备数据的最大尝试次数
+const maxDeviceDataFetchAttempts = 3
+
+// 获取状态数据的尝试次数，Key 为 HostState 的属性名
+var deviceDataFetchAttempts = map[string]int{
+	"Temperatures": 0,
+}
+
 // GetHost 获取主机硬件信息
 func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	var ret model.Host
@@ -193,15 +201,19 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		}
 	}
 
-	temperatures, err := host.SensorsTemperatures()
-	if err != nil {
-		println("host.SensorsTemperatures error:", err)
-	} else {
-		for _, t := range temperatures {
-			ret.Temperatures = append(ret.Temperatures, model.SensorTemperature{
-				Name:        t.SensorKey,
-				Temperature: t.Temperature,
-			})
+	if deviceDataFetchAttempts["Temperatures"] <= maxDeviceDataFetchAttempts {
+		temperatures, err := host.SensorsTemperatures()
+		if err != nil {
+			deviceDataFetchAttempts["Temperatures"]++
+			println("host.SensorsTemperatures error:", err, "attempt:", deviceDataFetchAttempts["Temperatures"])
+		} else {
+			deviceDataFetchAttempts["Temperatures"] = 0
+			for _, t := range temperatures {
+				ret.Temperatures = append(ret.Temperatures, model.SensorTemperature{
+					Name:        t.SensorKey,
+					Temperature: t.Temperature,
+				})
+			}
 		}
 	}
 
