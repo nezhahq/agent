@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 
 	"github.com/nezhahq/agent/model"
+	"github.com/nezhahq/agent/pkg/gpu"
+	gpustat "github.com/nezhahq/agent/pkg/gpu/stat"
 )
 
 var (
@@ -35,7 +38,10 @@ var (
 var (
 	netInSpeed, netOutSpeed, netInTransfer, netOutTransfer, lastUpdateNetStats uint64
 	cachedBootTime                                                             time.Time
+	gpuStat                                                                    float64
 )
+
+var queryLock sync.Mutex
 
 // GetHost 获取主机硬件信息
 func GetHost(agentConfig *model.AgentConfig) *model.Host {
@@ -77,6 +83,10 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 		} else {
 			ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", ci[0].ModelName, ci[0].Cores, cpuType))
 		}
+	}
+
+	if agentConfig.GPU {
+		ret.GPU = gpu.GetGPUModel()
 	}
 
 	ret.DiskTotal, _ = getDiskTotalAndUsed(agentConfig)
@@ -205,6 +215,9 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		}
 	}
 
+	go updateGPUStat(agentConfig, &gpuStat)
+	ret.GPU = gpuStat
+
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
 	ret.Uptime = uint64(time.Since(cachedBootTime).Seconds())
@@ -293,6 +306,22 @@ func getDiskTotalAndUsed(agentConfig *model.AgentConfig) (total uint64, used uin
 	}
 
 	return
+}
+
+func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *float64) {
+	queryLock.Lock()
+	defer queryLock.Unlock()
+	if agentConfig.GPU {
+		gs, err := gpustat.GetGPUStat()
+		if err != nil {
+			fmt.Println("gpustat.GetGPUStat error:", err)
+			*gpuStat = gs
+		} else {
+			*gpuStat = gs
+		}
+	} else {
+		*gpuStat = -1
+	}
 }
 
 func isListContainsStr(list []string, str string) bool {
