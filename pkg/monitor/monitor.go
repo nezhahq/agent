@@ -208,11 +208,14 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 			println("host.SensorsTemperatures error:", err, "attempt:", deviceDataFetchAttempts["Temperatures"])
 		} else {
 			deviceDataFetchAttempts["Temperatures"] = 0
+
 			for _, t := range temperatures {
-				ret.Temperatures = append(ret.Temperatures, model.SensorTemperature{
-					Name:        t.SensorKey,
-					Temperature: t.Temperature,
-				})
+				if t.Temperature > 0 {
+					ret.Temperatures = append(ret.Temperatures, model.SensorTemperature{
+						Name:        t.SensorKey,
+						Temperature: t.Temperature,
+					})
+				}
 			}
 		}
 	}
