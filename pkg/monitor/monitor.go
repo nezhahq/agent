@@ -2,13 +2,15 @@ package monitor
 
 import (
 	"fmt"
+	"math"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/dean2021/goss"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -41,7 +43,7 @@ var (
 	gpuStat                                                                    float64
 )
 
-var queryLock sync.Mutex
+var updating int32
 
 // GetHost 获取主机硬件信息
 func GetHost(agentConfig *model.AgentConfig) *model.Host {
@@ -309,18 +311,20 @@ func getDiskTotalAndUsed(agentConfig *model.AgentConfig) (total uint64, used uin
 }
 
 func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *float64) {
-	queryLock.Lock()
-	defer queryLock.Unlock()
+	if !atomic.CompareAndSwapInt32(&updating, 0, 1) {
+		return
+	}
+	defer atomic.StoreInt32(&updating, 0)
 	if agentConfig.GPU {
 		gs, err := gpustat.GetGPUStat()
 		if err != nil {
 			fmt.Println("gpustat.GetGPUStat error:", err)
-			*gpuStat = gs
+			atomicStoreFloat64(gpuStat, gs)
 		} else {
-			*gpuStat = gs
+			atomicStoreFloat64(gpuStat, gs)
 		}
 	} else {
-		*gpuStat = -1
+		atomicStoreFloat64(gpuStat, -1)
 	}
 }
 
@@ -336,4 +340,8 @@ func isListContainsStr(list []string, str string) bool {
 func println(v ...interface{}) {
 	fmt.Printf("NEZHA@%s>> ", time.Now().Format("2006-01-02 15:04:05"))
 	fmt.Println(v...)
+}
+
+func atomicStoreFloat64(x *float64, v float64) {
+	atomic.StoreUint64((*uint64)(unsafe.Pointer(x)), math.Float64bits(v))
 }
