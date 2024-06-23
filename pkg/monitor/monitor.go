@@ -335,6 +335,7 @@ func updateTemplatureStat(tempStat *[]model.SensorTemperature) {
 		return
 	}
 	defer atomic.StoreInt32(&updateTempStatus, 0)
+	*tempStat = []model.SensorTemperature{}
 	if deviceDataFetchAttempts["Temperatures"] <= maxDeviceDataFetchAttempts {
 		temperatures, err := host.SensorsTemperatures()
 		if err != nil {
