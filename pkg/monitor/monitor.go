@@ -2,12 +2,15 @@ package monitor
 
 import (
 	"fmt"
+	"math"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/dean2021/goss"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -19,6 +22,8 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 
 	"github.com/nezhahq/agent/model"
+	"github.com/nezhahq/agent/pkg/gpu"
+	gpustat "github.com/nezhahq/agent/pkg/gpu/stat"
 )
 
 var (
@@ -35,7 +40,10 @@ var (
 var (
 	netInSpeed, netOutSpeed, netInTransfer, netOutTransfer, lastUpdateNetStats uint64
 	cachedBootTime                                                             time.Time
+	gpuStat                                                                    float64
 )
+
+var updateStatus int32
 
 // GetHost 获取主机硬件信息
 func GetHost(agentConfig *model.AgentConfig) *model.Host {
@@ -77,6 +85,10 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 		} else {
 			ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", ci[0].ModelName, ci[0].Cores, cpuType))
 		}
+	}
+
+	if agentConfig.GPU {
+		ret.GPU = gpu.GetGPUModel()
 	}
 
 	ret.DiskTotal, _ = getDiskTotalAndUsed(agentConfig)
@@ -205,6 +217,9 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		}
 	}
 
+	go updateGPUStat(agentConfig, &gpuStat)
+	ret.GPU = gpuStat
+
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
 	ret.Uptime = uint64(time.Since(cachedBootTime).Seconds())
@@ -295,6 +310,24 @@ func getDiskTotalAndUsed(agentConfig *model.AgentConfig) (total uint64, used uin
 	return
 }
 
+func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *float64) {
+	if !atomic.CompareAndSwapInt32(&updateStatus, 0, 1) {
+		return
+	}
+	defer atomic.StoreInt32(&updateStatus, 0)
+	if agentConfig.GPU {
+		gs, err := gpustat.GetGPUStat()
+		if err != nil {
+			fmt.Println("gpustat.GetGPUStat error:", err)
+			atomicStoreFloat64(gpuStat, gs)
+		} else {
+			atomicStoreFloat64(gpuStat, gs)
+		}
+	} else {
+		atomicStoreFloat64(gpuStat, -1)
+	}
+}
+
 func isListContainsStr(list []string, str string) bool {
 	for i := 0; i < len(list); i++ {
 		if strings.Contains(str, list[i]) {
@@ -307,4 +340,8 @@ func isListContainsStr(list []string, str string) bool {
 func println(v ...interface{}) {
 	fmt.Printf("NEZHA@%s>> ", time.Now().Format("2006-01-02 15:04:05"))
 	fmt.Println(v...)
+}
+
+func atomicStoreFloat64(x *float64, v float64) {
+	atomic.StoreUint64((*uint64)(unsafe.Pointer(x)), math.Float64bits(v))
 }
