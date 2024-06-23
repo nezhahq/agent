@@ -41,6 +41,7 @@ var (
 	netInSpeed, netOutSpeed, netInTransfer, netOutTransfer, lastUpdateNetStats uint64
 	cachedBootTime                                                             time.Time
 	gpuStat                                                                    float64
+	temperatureStat                                                            []model.SensorTemperature
 )
 
 // 获取设备数据的最大尝试次数
@@ -51,7 +52,10 @@ var deviceDataFetchAttempts = map[string]int{
 	"Temperatures": 0,
 }
 
-var updateStatus int32
+var (
+	updateGPUStatus  int32
+	updateTempStatus int32
+)
 
 // GetHost 获取主机硬件信息
 func GetHost(agentConfig *model.AgentConfig) *model.Host {
@@ -213,24 +217,8 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		}
 	}
 
-	if deviceDataFetchAttempts["Temperatures"] <= maxDeviceDataFetchAttempts {
-		temperatures, err := host.SensorsTemperatures()
-		if err != nil {
-			deviceDataFetchAttempts["Temperatures"]++
-			println("host.SensorsTemperatures error:", err, "attempt:", deviceDataFetchAttempts["Temperatures"])
-		} else {
-			deviceDataFetchAttempts["Temperatures"] = 0
-
-			for _, t := range temperatures {
-				if t.Temperature > 0 {
-					ret.Temperatures = append(ret.Temperatures, model.SensorTemperature{
-						Name:        t.SensorKey,
-						Temperature: t.Temperature,
-					})
-				}
-			}
-		}
-	}
+	go updateTemplatureStat(&temperatureStat)
+	ret.Temperatures = temperatureStat
 
 	go updateGPUStat(agentConfig, &gpuStat)
 	ret.GPU = gpuStat
@@ -326,10 +314,10 @@ func getDiskTotalAndUsed(agentConfig *model.AgentConfig) (total uint64, used uin
 }
 
 func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *float64) {
-	if !atomic.CompareAndSwapInt32(&updateStatus, 0, 1) {
+	if !atomic.CompareAndSwapInt32(&updateGPUStatus, 0, 1) {
 		return
 	}
-	defer atomic.StoreInt32(&updateStatus, 0)
+	defer atomic.StoreInt32(&updateGPUStatus, 0)
 	if agentConfig.GPU {
 		gs, err := gpustat.GetGPUStat()
 		if err != nil {
@@ -340,6 +328,30 @@ func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *float64) {
 		}
 	} else {
 		atomicStoreFloat64(gpuStat, -1)
+	}
+}
+
+func updateTemplatureStat(tempStat *[]model.SensorTemperature) {
+	if !atomic.CompareAndSwapInt32(&updateTempStatus, 0, 1) {
+		return
+	}
+	defer atomic.StoreInt32(&updateTempStatus, 0)
+	if deviceDataFetchAttempts["Temperatures"] <= maxDeviceDataFetchAttempts {
+		temperatures, err := host.SensorsTemperatures()
+		if err != nil {
+			deviceDataFetchAttempts["Temperatures"]++
+			println("host.SensorsTemperatures error:", err, "attempt:", deviceDataFetchAttempts["Temperatures"])
+		} else {
+			deviceDataFetchAttempts["Temperatures"] = 0
+			for _, t := range temperatures {
+				if t.Temperature > 0 {
+					*tempStat = append(*tempStat, model.SensorTemperature{
+						Name:        t.SensorKey,
+						Temperature: t.Temperature,
+					})
+				}
+			}
+		}
 	}
 }
 
