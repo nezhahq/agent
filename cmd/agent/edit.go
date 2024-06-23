@@ -65,12 +65,20 @@ func editAgentConfig(cmd *cobra.Command, args []string) {
 				Default: strings.Join(agentConfig.DNS, ","),
 			},
 		},
+		{
+			Name: "gpu",
+			Prompt: &survey.Confirm{
+				Message: "是否启用 GPU 监控？",
+				Default: false,
+			},
+		},
 	}
 
 	answers := struct {
 		Nic  []string
 		Disk []string
 		DNS  string
+		GPU  bool
 	}{}
 
 	err = survey.Ask(qs, &answers, survey.WithValidator(survey.Required))
@@ -107,6 +115,8 @@ func editAgentConfig(cmd *cobra.Command, args []string) {
 	} else {
 		agentConfig.DNS = []string{}
 	}
+
+	agentConfig.GPU = answers.GPU
 
 	if err = agentConfig.Save(); err != nil {
 		panic(err)

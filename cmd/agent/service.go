@@ -53,6 +53,7 @@ func serviceActions(cmd *cobra.Command, args []string) {
 		{agentCliParam.DisableCommandExecute, "--disable-command-execute", ""},
 		{agentCliParam.DisableAutoUpdate, "--disable-auto-update", ""},
 		{agentCliParam.DisableForceUpdate, "--disable-force-update", ""},
+		{agentConfig.GPU, "--gpu", ""},
 		{agentCliParam.IPReportPeriod != 30*60, "-u", fmt.Sprint(agentCliParam.IPReportPeriod)},
 	}
 
