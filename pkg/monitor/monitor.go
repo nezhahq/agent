@@ -219,6 +219,9 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 	}
 
 	go updateTemperatureStat()
+
+	tempWriteLock.RLock()
+	defer tempWriteLock.RUnlock()
 	ret.Temperatures = temperatureStat
 
 	go updateGPUStat(agentConfig, &gpuStat)
@@ -338,9 +341,6 @@ func updateTemperatureStat() {
 	}
 	defer atomic.StoreInt32(&updateTempStatus, 0)
 
-	tempWriteLock.Lock()
-	defer tempWriteLock.Unlock()
-
 	if deviceDataFetchAttempts["Temperatures"] <= maxDeviceDataFetchAttempts {
 		temperatures, err := host.SensorsTemperatures()
 		if err != nil {
@@ -358,6 +358,8 @@ func updateTemperatureStat() {
 				}
 			}
 
+			tempWriteLock.Lock()
+			defer tempWriteLock.Unlock()
 			temperatureStat = tempStat
 		}
 	}
