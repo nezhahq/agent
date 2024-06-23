@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -54,6 +55,7 @@ var deviceDataFetchAttempts = map[string]int{
 var (
 	updateGPUStatus  int32
 	updateTempStatus int32
+	tempWriteLock    sync.RWMutex
 )
 
 // GetHost 获取主机硬件信息
@@ -216,7 +218,10 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		}
 	}
 
-	go updateTemplatureStat(&temperatureStat)
+	go updateTemperatureStat()
+
+	tempWriteLock.RLock()
+	defer tempWriteLock.RUnlock()
 	ret.Temperatures = temperatureStat
 
 	go updateGPUStat(agentConfig, &gpuStat)
@@ -330,11 +335,12 @@ func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *uint64) {
 	}
 }
 
-func updateTemplatureStat(tempStat *[]model.SensorTemperature) {
+func updateTemperatureStat() {
 	if !atomic.CompareAndSwapInt32(&updateTempStatus, 0, 1) {
 		return
 	}
 	defer atomic.StoreInt32(&updateTempStatus, 0)
+
 	if deviceDataFetchAttempts["Temperatures"] <= maxDeviceDataFetchAttempts {
 		temperatures, err := host.SensorsTemperatures()
 		if err != nil {
@@ -342,14 +348,19 @@ func updateTemplatureStat(tempStat *[]model.SensorTemperature) {
 			println("host.SensorsTemperatures error:", err, "attempt:", deviceDataFetchAttempts["Temperatures"])
 		} else {
 			deviceDataFetchAttempts["Temperatures"] = 0
+			tempStat := []model.SensorTemperature{}
 			for _, t := range temperatures {
 				if t.Temperature > 0 {
-					*tempStat = append(*tempStat, model.SensorTemperature{
+					tempStat = append(tempStat, model.SensorTemperature{
 						Name:        t.SensorKey,
 						Temperature: t.Temperature,
 					})
 				}
 			}
+
+			tempWriteLock.Lock()
+			defer tempWriteLock.Unlock()
+			temperatureStat = tempStat
 		}
 	}
 }
