@@ -333,10 +333,10 @@ func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *uint64) {
 }
 
 func updateTemperatureStat() {
-	if !atomic.CompareAndSwapInt32(&updateGPUStatus, 0, 1) {
+	if !atomic.CompareAndSwapInt32(&updateTempStatus, 0, 1) {
 		return
 	}
-	defer atomic.StoreInt32(&updateGPUStatus, 0)
+	defer atomic.StoreInt32(&updateTempStatus, 0)
 
 	tempWriteLock.Lock()
 	defer tempWriteLock.Unlock()
