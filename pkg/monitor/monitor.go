@@ -43,7 +43,7 @@ var (
 	gpuStat                                                                    float64
 )
 
-var updating int32
+var updateStatus int32
 
 // GetHost 获取主机硬件信息
 func GetHost(agentConfig *model.AgentConfig) *model.Host {
@@ -311,10 +311,10 @@ func getDiskTotalAndUsed(agentConfig *model.AgentConfig) (total uint64, used uin
 }
 
 func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *float64) {
-	if !atomic.CompareAndSwapInt32(&updating, 0, 1) {
+	if !atomic.CompareAndSwapInt32(&updateStatus, 0, 1) {
 		return
 	}
-	defer atomic.StoreInt32(&updating, 0)
+	defer atomic.StoreInt32(&updateStatus, 0)
 	if agentConfig.GPU {
 		gs, err := gpustat.GetGPUStat()
 		if err != nil {
