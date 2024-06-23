@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/dean2021/goss"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -40,7 +39,7 @@ var (
 var (
 	netInSpeed, netOutSpeed, netInTransfer, netOutTransfer, lastUpdateNetStats uint64
 	cachedBootTime                                                             time.Time
-	gpuStat                                                                    float64
+	gpuStat                                                                    uint64
 	temperatureStat                                                            []model.SensorTemperature
 )
 
@@ -221,7 +220,7 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 	ret.Temperatures = temperatureStat
 
 	go updateGPUStat(agentConfig, &gpuStat)
-	ret.GPU = gpuStat
+	ret.GPU = math.Float64frombits(gpuStat)
 
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
@@ -313,7 +312,7 @@ func getDiskTotalAndUsed(agentConfig *model.AgentConfig) (total uint64, used uin
 	return
 }
 
-func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *float64) {
+func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *uint64) {
 	if !atomic.CompareAndSwapInt32(&updateGPUStatus, 0, 1) {
 		return
 	}
@@ -369,6 +368,6 @@ func println(v ...interface{}) {
 	fmt.Println(v...)
 }
 
-func atomicStoreFloat64(x *float64, v float64) {
-	atomic.StoreUint64((*uint64)(unsafe.Pointer(x)), math.Float64bits(v))
+func atomicStoreFloat64(x *uint64, v float64) {
+	atomic.StoreUint64(x, math.Float64bits(v))
 }
