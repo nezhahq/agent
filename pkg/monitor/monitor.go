@@ -13,13 +13,14 @@ import (
 	"time"
 
 	"github.com/dean2021/goss"
-	"github.com/shirou/gopsutil/v3/cpu"
-	"github.com/shirou/gopsutil/v3/disk"
-	"github.com/shirou/gopsutil/v3/host"
-	"github.com/shirou/gopsutil/v3/load"
-	"github.com/shirou/gopsutil/v3/mem"
-	"github.com/shirou/gopsutil/v3/net"
-	"github.com/shirou/gopsutil/v3/process"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/host"
+	"github.com/shirou/gopsutil/v4/load"
+	"github.com/shirou/gopsutil/v4/mem"
+	"github.com/shirou/gopsutil/v4/net"
+	"github.com/shirou/gopsutil/v4/process"
+	"github.com/shirou/gopsutil/v4/sensors"
 
 	"github.com/nezhahq/agent/model"
 	"github.com/nezhahq/agent/pkg/gpu"
@@ -88,15 +89,15 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	if err != nil {
 		println("cpu.Info error:", err)
 	} else {
-		if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
-			for i := 0; i < len(ci); i++ {
-				cpuModelCount[ci[i].ModelName]++
-			}
-			for model, count := range cpuModelCount {
+		for i := 0; i < len(ci); i++ {
+			cpuModelCount[ci[i].ModelName]++
+		}
+		for model, count := range cpuModelCount {
+			if len(ci) > 1 {
 				ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", model, count, cpuType))
+			} else {
+				ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", model, ci[0].Cores, cpuType))
 			}
-		} else {
-			ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", ci[0].ModelName, ci[0].Cores, cpuType))
 		}
 	}
 
@@ -342,7 +343,7 @@ func updateTemperatureStat() {
 	defer atomic.StoreInt32(&updateTempStatus, 0)
 
 	if deviceDataFetchAttempts["Temperatures"] <= maxDeviceDataFetchAttempts {
-		temperatures, err := host.SensorsTemperatures()
+		temperatures, err := sensors.SensorsTemperatures()
 		if err != nil {
 			deviceDataFetchAttempts["Temperatures"]++
 			println("host.SensorsTemperatures error:", err, "attempt:", deviceDataFetchAttempts["Temperatures"])

@@ -17,7 +17,7 @@ import (
 	"github.com/UserExistsError/conpty"
 	"github.com/artdarek/go-unzip"
 	"github.com/iamacarpet/go-winpty"
-	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v4/host"
 )
 
 var isWin10 bool
@@ -37,7 +37,7 @@ func VersionCheck() bool {
 	}
 
 	re := regexp.MustCompile(`Build (\d+(\.\d+)?)`)
-	match := re.FindStringSubmatch(hi.PlatformVersion)
+	match := re.FindStringSubmatch(hi.KernelVersion)
 	if len(match) > 1 {
 		versionStr := match[1]
 
