@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
-	"github.com/shirou/gopsutil/v4/disk"
-	psnet "github.com/shirou/gopsutil/v4/net"
+	"github.com/shirou/gopsutil/v3/disk"
+	psnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/spf13/cobra"
 )
 

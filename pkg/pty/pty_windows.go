@@ -17,7 +17,7 @@ import (
 	"github.com/UserExistsError/conpty"
 	"github.com/artdarek/go-unzip"
 	"github.com/iamacarpet/go-winpty"
-	"github.com/shirou/gopsutil/v4/host"
+	"github.com/shirou/gopsutil/v3/host"
 )
 
 var isWin10 bool
