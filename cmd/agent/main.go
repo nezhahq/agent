@@ -50,6 +50,7 @@ type AgentCliParam struct {
 	ClientSecret          string // 客户端密钥
 	ReportDelay           int    // 报告间隔
 	TLS                   bool   // 是否使用TLS加密传输至服务端
+	InsecureTLS           bool   // 是否禁用证书检查
 	Version               bool   // 当前版本号
 	IPReportPeriod        uint32 // 上报IP间隔
 }
@@ -146,6 +147,7 @@ func init() {
 	agentCmd.PersistentFlags().StringVarP(&agentCliParam.Server, "server", "s", "localhost:5555", "管理面板RPC端口")
 	agentCmd.PersistentFlags().StringVarP(&agentCliParam.ClientSecret, "password", "p", "", "Agent连接Secret")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
+	agentCmd.PersistentFlags().BoolVarP(&agentCliParam.InsecureTLS, "insecure", "k", false, "禁用证书检查")
 	agentCmd.PersistentFlags().BoolVarP(&agentCliParam.Debug, "debug", "d", false, "开启调试信息")
 	agentCmd.PersistentFlags().IntVar(&agentCliParam.ReportDelay, "report-delay", 1, "系统状态上报间隔")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.SkipConnectionCount, "skip-conn", false, "不监控连接数")
@@ -277,7 +279,11 @@ func run() {
 		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
 		var securityOption grpc.DialOption
 		if agentCliParam.TLS {
-			securityOption = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}))
+			if agentCliParam.InsecureTLS {
+				securityOption = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true}))
+			} else {
+				securityOption = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}))
+			}
 		} else {
 			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
