@@ -100,21 +100,23 @@ func fetchGeoIP(servers []string, isV6 bool) geoIP {
 				continue
 			}
 			resp.Body.Close()
-			if err := ip.Unmarshal(body); err != nil {
+			newIP := geoIP{}
+			if err := newIP.Unmarshal(body); err != nil {
 				continue
 			}
 			// 没取到 v6 IP
-			if isV6 && !strings.Contains(ip.IP, ":") {
+			if isV6 && !strings.Contains(newIP.IP, ":") {
 				continue
 			}
 			// 没取到 v4 IP
-			if !isV6 && !strings.Contains(ip.IP, ".") {
+			if !isV6 && !strings.Contains(newIP.IP, ".") {
 				continue
 			}
 			// 未获取到国家码
-			if ip.CountryCode == "" {
+			if newIP.CountryCode == "" {
 				continue
 			}
+			ip = newIP
 			return ip
 		}
 	}
