@@ -37,7 +37,7 @@ func VersionCheck() bool {
 	}
 
 	re := regexp.MustCompile(`Build (\d+(\.\d+)?)`)
-	match := re.FindStringSubmatch(hi.PlatformVersion)
+	match := re.FindStringSubmatch(hi.KernelVersion)
 	if len(match) > 1 {
 		versionStr := match[1]
 

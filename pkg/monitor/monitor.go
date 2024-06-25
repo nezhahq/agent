@@ -88,15 +88,15 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	if err != nil {
 		println("cpu.Info error:", err)
 	} else {
-		if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
-			for i := 0; i < len(ci); i++ {
-				cpuModelCount[ci[i].ModelName]++
-			}
-			for model, count := range cpuModelCount {
+		for i := 0; i < len(ci); i++ {
+			cpuModelCount[ci[i].ModelName]++
+		}
+		for model, count := range cpuModelCount {
+			if len(ci) > 1 {
 				ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", model, count, cpuType))
+			} else {
+				ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", model, ci[0].Cores, cpuType))
 			}
-		} else {
-			ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", ci[0].ModelName, ci[0].Cores, cpuType))
 		}
 	}
 
