@@ -4,11 +4,12 @@ package stat
 // Original License: MIT
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"strconv"
+
+	"github.com/nezhahq/agent/pkg/util"
 )
 
 type ROCmSMI struct {
@@ -48,7 +49,7 @@ func gatherROCmSMI(ret []byte) ([]float64, error) {
 	var gpus map[string]GPU
 	var percentage []float64
 
-	err := json.Unmarshal(ret, &gpus)
+	err := util.Json.Unmarshal(ret, &gpus)
 	if err != nil {
 		return nil, err
 	}
