@@ -24,6 +24,7 @@ import (
 	"github.com/nezhahq/agent/model"
 	"github.com/nezhahq/agent/pkg/gpu"
 	gpustat "github.com/nezhahq/agent/pkg/gpu/stat"
+	"github.com/nezhahq/agent/pkg/util"
 )
 
 var (
@@ -375,8 +376,12 @@ func isListContainsStr(list []string, str string) bool {
 }
 
 func println(v ...interface{}) {
-	fmt.Printf("NEZHA@%s>> ", time.Now().Format("2006-01-02 15:04:05"))
-	fmt.Println(v...)
+	if runtime.GOOS != "darwin" {
+		util.Logger.Infof("NEZHA@%s>> %v", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprint(v...))
+	} else {
+		fmt.Printf("NEZHA@%s>> ", time.Now().Format("2006-01-02 15:04:05"))
+		fmt.Println(v...)
+	}
 }
 
 func atomicStoreFloat64(x *uint64, v float64) {

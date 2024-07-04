@@ -17,7 +17,7 @@ require (
 	github.com/jaypipes/ghw v0.12.0
 	github.com/json-iterator/go v1.1.12
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d
-	github.com/nezhahq/service v0.0.0-20240519060034-90701692f8ef
+	github.com/nezhahq/service v0.0.0-20240704142721-eba37f9cc709
 	github.com/quic-go/quic-go v0.40.1
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/spf13/cobra v1.8.0

@@ -114,6 +114,8 @@ github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d h1:gU
 github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d/go.mod h1:fOsabb2tjwCe7/kGSsout6oL2cp0sKhOwYQp6fP/Xfg=
 github.com/nezhahq/service v0.0.0-20240519060034-90701692f8ef h1:nC+Cxc9MyBFT+snkl5lBUpxGqSGqXv9B2AMHtZOtXzo=
 github.com/nezhahq/service v0.0.0-20240519060034-90701692f8ef/go.mod h1:i6zO7Vzuv5+mdaCzHrvAC4U63W59uXmX9n6o7p4PJGk=
+github.com/nezhahq/service v0.0.0-20240704142721-eba37f9cc709 h1:WzZo/RXmJI2ReodnIg09QI4J6D/cHsU7o1WHWcmtqqo=
+github.com/nezhahq/service v0.0.0-20240704142721-eba37f9cc709/go.mod h1:i6zO7Vzuv5+mdaCzHrvAC4U63W59uXmX9n6o7p4PJGk=
 github.com/onsi/ginkgo/v2 v2.9.5 h1:+6Hr4uxzP4XIUyAkg61dWBw8lb/gc4/X5luuxN/EC+Q=
 github.com/onsi/ginkgo/v2 v2.9.5/go.mod h1:tvAoo1QUJwNEU2ITftXTpR7R1RbCzoZUOs3RonqW57k=
 github.com/onsi/gomega v1.27.6 h1:ENqfyGeS5AX/rlXDd/ETokDz93u0YufY1Pgxuy/PvWE=
