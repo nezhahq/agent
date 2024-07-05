@@ -707,12 +707,7 @@ func handleTerminalTask(task *pb.Task) {
 
 func println(v ...interface{}) {
 	if agentCliParam.Debug {
-		if runtime.GOOS != "darwin" {
-			util.Logger.Infof("NEZHA@%s>> %v", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprint(v...))
-		} else {
-			fmt.Printf("NEZHA@%s>> ", time.Now().Format("2006-01-02 15:04:05"))
-			fmt.Println(v...)
-		}
+		util.Println(v...)
 	}
 }
 
