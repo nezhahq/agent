@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nezhahq/service"
 	"github.com/spf13/cobra"
 )
 
@@ -13,12 +14,44 @@ type AgentCliFlags struct {
 	Value       string
 }
 
+type program struct {
+	exit    chan struct{}
+	service service.Service
+}
+
 var serviceCmd = &cobra.Command{
 	Use:    "service <install/uninstall/start/stop/restart>",
 	Short:  "服务与自启动设置",
 	Args:   cobra.ExactArgs(1),
 	Run:    serviceActions,
 	PreRun: servicePreRun,
+}
+
+func (p *program) Start(s service.Service) error {
+	go p.run()
+	return nil
+}
+
+func (p *program) Stop(s service.Service) error {
+	close(p.exit)
+	if service.Interactive() {
+		os.Exit(0)
+	}
+	return nil
+}
+
+func (p *program) run() {
+	defer func() {
+		if service.Interactive() {
+			p.Stop(p.service)
+		} else {
+			p.service.Stop()
+		}
+	}()
+
+	run()
+
+	return
 }
 
 func init() {

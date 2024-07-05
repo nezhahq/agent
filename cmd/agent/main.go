@@ -25,7 +25,7 @@ import (
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
 	"github.com/nezhahq/service"
 	"github.com/quic-go/quic-go/http3"
-	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v4/host"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -55,17 +55,11 @@ type AgentCliParam struct {
 	IPReportPeriod        uint32 // 上报IP间隔
 }
 
-type program struct {
-	exit    chan struct{}
-	service service.Service
-}
-
 var (
 	version string
 	arch    string
 	client  pb.NezhaServiceClient
 	inited  bool
-	logger  service.Logger
 )
 
 var agentCmd = &cobra.Command{
@@ -211,33 +205,6 @@ func preRun(cmd *cobra.Command, args []string) {
 	}
 }
 
-func (p *program) Start(s service.Service) error {
-	go p.run()
-	return nil
-}
-
-func (p *program) Stop(s service.Service) error {
-	close(p.exit)
-	if service.Interactive() {
-		os.Exit(0)
-	}
-	return nil
-}
-
-func (p *program) run() {
-	defer func() {
-		if service.Interactive() {
-			p.Stop(p.service)
-		} else {
-			p.service.Stop()
-		}
-	}()
-
-	run()
-
-	return
-}
-
 func run() {
 	auth := model.AuthHandler{
 		ClientSecret: agentCliParam.ClientSecret,
@@ -345,7 +312,7 @@ func runService(action string, flags []string) {
 	prg.service = s
 
 	errs := make(chan error, 5)
-	logger, err = s.Logger(errs)
+	util.Logger, err = s.Logger(errs)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -374,7 +341,7 @@ func runService(action string, flags []string) {
 
 	err = s.Run()
 	if err != nil {
-		logger.Error(err)
+		util.Logger.Error(err)
 	}
 }
 
@@ -740,8 +707,7 @@ func handleTerminalTask(task *pb.Task) {
 
 func println(v ...interface{}) {
 	if agentCliParam.Debug {
-		fmt.Printf("NEZHA@%s>> ", time.Now().Format("2006-01-02 15:04:05"))
-		fmt.Println(v...)
+		util.Println(v...)
 	}
 }
 

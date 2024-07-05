@@ -38,7 +38,7 @@ func GetGPUStat() (float64, error) {
 		gs, err = getAMDStat()
 	}
 	if err != nil || len(gs) == 0 {
-		return -1, err
+		return 0, err
 	}
 	return gs[0], nil
 }
