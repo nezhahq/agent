@@ -112,8 +112,6 @@ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9G
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
 github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d h1:gUt6JLTE/HH7qXS5F7SSYrmsj8NXx3i5CaF6mzYw6pA=
 github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d/go.mod h1:fOsabb2tjwCe7/kGSsout6oL2cp0sKhOwYQp6fP/Xfg=
-github.com/nezhahq/service v0.0.0-20240519060034-90701692f8ef h1:nC+Cxc9MyBFT+snkl5lBUpxGqSGqXv9B2AMHtZOtXzo=
-github.com/nezhahq/service v0.0.0-20240519060034-90701692f8ef/go.mod h1:i6zO7Vzuv5+mdaCzHrvAC4U63W59uXmX9n6o7p4PJGk=
 github.com/nezhahq/service v0.0.0-20240704142721-eba37f9cc709 h1:WzZo/RXmJI2ReodnIg09QI4J6D/cHsU7o1WHWcmtqqo=
 github.com/nezhahq/service v0.0.0-20240704142721-eba37f9cc709/go.mod h1:i6zO7Vzuv5+mdaCzHrvAC4U63W59uXmX9n6o7p4PJGk=
 github.com/onsi/ginkgo/v2 v2.9.5 h1:+6Hr4uxzP4XIUyAkg61dWBw8lb/gc4/X5luuxN/EC+Q=
@@ -139,8 +137,8 @@ github.com/sagikazarmark/locafero v0.4.0 h1:HApY1R9zGo4DBgr7dqsTH/JJxLTTsOt7u6ke
 github.com/sagikazarmark/locafero v0.4.0/go.mod h1:Pe1W6UlPYUk/+wc/6KFhbORCfqzgYEpgQ3O5fPuL3H4=
 github.com/sagikazarmark/slog-shim v0.1.0 h1:diDBnUNK9N/354PgrxMywXnAwEr1QZcOr6gto+ugjYE=
 github.com/sagikazarmark/slog-shim v0.1.0/go.mod h1:SrcSrq8aKtyuqEI1uvTDTK1arOWRIczQRv+GVI1AkeQ=
-github.com/shirou/gopsutil/v3 v3.24.5 h1:i0t8kL+kQTvpAYToeuiVk3TgDeKOFioZO3Ztz/iZ9pI=
-github.com/shirou/gopsutil/v3 v3.24.5/go.mod h1:bsoOS1aStSs9ErQ1WWfxllSeS1K5D+U30r2NfcubMVk=
+github.com/shirou/gopsutil/v4 v4.24.6 h1:9qqCSYF2pgOU+t+NgJtp7Co5+5mHF/HyKBUckySQL64=
+github.com/shirou/gopsutil/v4 v4.24.6/go.mod h1:aoebb2vxetJ/yIDZISmduFvVNPHqXQ9SEJwRXxkf0RA=
 github.com/shoenig/go-m1cpu v0.1.6 h1:nxdKQNcEB6vzgA2E2bvzKIYRuNj7XNJ4S/aRSwKzFtM=
 github.com/shoenig/go-m1cpu v0.1.6/go.mod h1:1JJMcUBvfNwpq05QDQVAnx3gUHr9IYF7GNg9SUEw2VQ=
 github.com/shoenig/test v0.6.4 h1:kVTaSd7WLz5WZ2IaoM0RSzRsUD+m8wRR+5qvntpn4LU=
