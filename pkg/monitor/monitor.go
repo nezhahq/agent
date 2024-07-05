@@ -67,7 +67,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	var cpuType string
 	hi, err := host.Info()
 	if err != nil {
-		util.Println("host.Info error:", err)
+		util.Println("host.Info error: ", err)
 	} else {
 		if hi.VirtualizationRole == "guest" {
 			cpuType = "Virtual"
@@ -88,7 +88,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	cpuModelCount := make(map[string]int)
 	ci, err := cpu.Info()
 	if err != nil {
-		util.Println("cpu.Info error:", err)
+		util.Println("cpu.Info error: ", err)
 	} else {
 		for i := 0; i < len(ci); i++ {
 			cpuModelCount[ci[i].ModelName]++
@@ -110,7 +110,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 
 	mv, err := mem.VirtualMemory()
 	if err != nil {
-		util.Println("mem.VirtualMemory error:", err)
+		util.Println("mem.VirtualMemory error: ", err)
 	} else {
 		ret.MemTotal = mv.Total
 		if runtime.GOOS != "windows" {
@@ -121,7 +121,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	if runtime.GOOS == "windows" {
 		ms, err := mem.SwapMemory()
 		if err != nil {
-			util.Println("mem.SwapMemory error:", err)
+			util.Println("mem.SwapMemory error: ", err)
 		} else {
 			ret.SwapTotal = ms.Total
 		}
@@ -141,14 +141,14 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 
 	cp, err := cpu.Percent(0, false)
 	if err != nil || len(cp) == 0 {
-		util.Println("cpu.Percent error:", err)
+		util.Println("cpu.Percent error: ", err)
 	} else {
 		ret.CPU = cp[0]
 	}
 
 	vm, err := mem.VirtualMemory()
 	if err != nil {
-		util.Println("mem.VirtualMemory error:", err)
+		util.Println("mem.VirtualMemory error: ", err)
 	} else {
 		ret.MemUsed = vm.Total - vm.Available
 		if runtime.GOOS != "windows" {
@@ -159,7 +159,7 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		// gopsutil 在 Windows 下不能正确取 swap
 		ms, err := mem.SwapMemory()
 		if err != nil {
-			util.Println("mem.SwapMemory error:", err)
+			util.Println("mem.SwapMemory error: ", err)
 		} else {
 			ret.SwapUsed = ms.Used
 		}
@@ -169,7 +169,7 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 
 	loadStat, err := load.Avg()
 	if err != nil {
-		util.Println("load.Avg error:", err)
+		util.Println("load.Avg error: ", err)
 	} else {
 		ret.Load1 = loadStat.Load1
 		ret.Load5 = loadStat.Load5
@@ -180,7 +180,7 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 	if !skipProcsCount {
 		procs, err = process.Pids()
 		if err != nil {
-			util.Println("process.Pids error:", err)
+			util.Println("process.Pids error: ", err)
 		} else {
 			ret.ProcessCount = uint64(len(procs))
 		}
@@ -327,7 +327,7 @@ func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *uint64) {
 	if agentConfig.GPU {
 		gs, err := gpustat.GetGPUStat()
 		if err != nil {
-			util.Println("gpustat.GetGPUStat error:", err)
+			util.Println("gpustat.GetGPUStat error: ", err)
 			atomicStoreFloat64(gpuStat, gs)
 		} else {
 			atomicStoreFloat64(gpuStat, gs)
@@ -347,7 +347,7 @@ func updateTemperatureStat() {
 		temperatures, err := sensors.SensorsTemperatures()
 		if err != nil {
 			deviceDataFetchAttempts["Temperatures"]++
-			util.Println("host.SensorsTemperatures error:", err, "attempt:", deviceDataFetchAttempts["Temperatures"])
+			util.Println("host.SensorsTemperatures error: ", err, " attempt: ", deviceDataFetchAttempts["Temperatures"])
 		} else {
 			deviceDataFetchAttempts["Temperatures"] = 0
 			tempStat := []model.SensorTemperature{}
