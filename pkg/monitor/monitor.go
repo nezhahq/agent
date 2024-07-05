@@ -333,7 +333,7 @@ func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *uint64) {
 			atomicStoreFloat64(gpuStat, gs)
 		}
 	} else {
-		atomicStoreFloat64(gpuStat, -1)
+		atomicStoreFloat64(gpuStat, 0)
 	}
 }
 
