@@ -11,7 +11,7 @@ import (
 func GetGPUStat() (float64, error) {
 	shellPath, err := exec.LookPath("powershell.exe")
 	if err != nil || shellPath == "" {
-		return -1, err
+		return 0, err
 	}
 	cmd := exec.Command(
 		shellPath,
@@ -20,12 +20,12 @@ func GetGPUStat() (float64, error) {
 	)
 	output, err1 := cmd.CombinedOutput()
 	if err1 != nil {
-		return -1, err1
+		return 0, err1
 	}
 	t := strings.TrimSpace(string(output))
 	gs, err2 := strconv.ParseFloat(t, 64)
 	if err2 != nil {
-		return -1, err2
+		return 0, err2
 	}
 	return gs, nil
 }

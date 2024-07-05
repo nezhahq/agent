@@ -30,7 +30,7 @@ func GetGPUStat() (float64, error) {
 	ioreg := exec.Command("ioreg", "-rd1", "-c", "IOAccelerator")
 	gs, err := extractGPUStat(ioreg)
 	if err != nil || len(gs) == 0 {
-		return -1, err
+		return 0, err
 	}
 	return gs[0], nil
 }
