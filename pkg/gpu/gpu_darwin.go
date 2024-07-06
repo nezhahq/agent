@@ -3,7 +3,6 @@
 package gpu
 
 import (
-	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -26,7 +25,7 @@ func extractGPUInfo(cmd *exec.Cmd) ([]string, error) {
 	return modelNames, nil
 }
 
-func GetGPUModel() []string {
+func GetGPUModel() ([]string, error) {
 	vendorNames := []string{
 		"AMD", "Intel", "Nvidia", "Apple",
 	}
@@ -37,8 +36,7 @@ func GetGPUModel() []string {
 		ioreg = exec.Command("ioreg", "-rd1", "-c", "IOPCIDevice")
 		gi, err = extractGPUInfo(ioreg)
 		if err != nil {
-			fmt.Println("Error executing ioreg:", err)
-			return nil
+			return nil, err
 		}
 	}
 
@@ -51,5 +49,5 @@ func GetGPUModel() []string {
 			}
 		}
 	}
-	return gpuModel
+	return gpuModel, nil
 }
