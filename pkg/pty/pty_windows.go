@@ -22,8 +22,19 @@ import (
 
 var isWin10 bool
 
-type Pty struct {
-	tty interface{}
+type Pty interface {
+	Write(p []byte) (n int, err error)
+	Read(p []byte) (n int, err error)
+	Setsize(cols, rows uint32) error
+	Close() error
+}
+
+type winPTY struct {
+	tty *winpty.WinPTY
+}
+
+type conPty struct {
+	tty *conpty.ConPty
 }
 
 func init() {
@@ -108,9 +119,7 @@ func getExecutableFilePath() (string, error) {
 	return filepath.Dir(ex), nil
 }
 
-func Start() (*Pty, error) {
-	var tty interface{}
-
+func Start() (Pty, error) {
 	shellPath, err := exec.LookPath("powershell.exe")
 	if err != nil || shellPath == "" {
 		shellPath = "cmd.exe"
@@ -120,46 +129,48 @@ func Start() (*Pty, error) {
 		return nil, err
 	}
 	if !isWin10 {
-		tty, err = winpty.OpenDefault(path, shellPath)
+		tty, err := winpty.OpenDefault(path, shellPath)
+		return &winPTY{tty: tty}, err
 	} else {
-		tty, err = conpty.Start(shellPath, conpty.ConPtyWorkDir(path))
-	}
-	return &Pty{tty: tty}, err
-}
-
-func (pty *Pty) Write(p []byte) (n int, err error) {
-	if !isWin10 {
-		return pty.tty.(*winpty.WinPTY).StdIn.Write(p)
-	} else {
-		return pty.tty.(*conpty.ConPty).Write(p)
+		tty, err := conpty.Start(shellPath, conpty.ConPtyWorkDir(path))
+		return &conPty{tty: tty}, err
 	}
 }
 
-func (pty *Pty) Read(p []byte) (n int, err error) {
-	if !isWin10 {
-		return pty.tty.(*winpty.WinPTY).StdOut.Read(p)
-	} else {
-		return pty.tty.(*conpty.ConPty).Read(p)
-	}
+func (w *winPTY) Write(p []byte) (n int, err error) {
+	return w.tty.StdIn.Write(p)
 }
 
-func (pty *Pty) Setsize(cols, rows uint32) error {
-	if !isWin10 {
-		pty.tty.(*winpty.WinPTY).SetSize(cols, rows)
-		return nil
-	} else {
-		return pty.tty.(*conpty.ConPty).Resize(int(cols), int(rows))
-	}
+func (w *winPTY) Read(p []byte) (n int, err error) {
+	return w.tty.StdOut.Read(p)
 }
 
-func (pty *Pty) Close() error {
-	if !isWin10 {
-		pty.tty.(*winpty.WinPTY).Close()
-		return nil
-	} else {
-		if err := pty.tty.(*conpty.ConPty).Close(); err != nil {
-			return err
-		}
-		return nil
+func (w *winPTY) Setsize(cols, rows uint32) error {
+	w.tty.SetSize(cols, rows)
+	return nil
+}
+
+func (w *winPTY) Close() error {
+	w.tty.Close()
+	return nil
+}
+
+func (c *conPty) Write(p []byte) (n int, err error) {
+	return c.tty.Write(p)
+}
+
+func (c *conPty) Read(p []byte) (n int, err error) {
+	return c.tty.Read(p)
+}
+
+func (c *conPty) Setsize(cols, rows uint32) error {
+	c.tty.Resize(int(cols), int(rows))
+	return nil
+}
+
+func (c *conPty) Close() error {
+	if err := c.tty.Close(); err != nil {
+		return err
 	}
+	return nil
 }
