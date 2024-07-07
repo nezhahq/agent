@@ -72,13 +72,29 @@ func editAgentConfig(cmd *cobra.Command, args []string) {
 				Default: false,
 			},
 		},
+		{
+			Name: "temperature",
+			Prompt: &survey.Confirm{
+				Message: "是否启用温度监控？",
+				Default: false,
+			},
+		},
+		{
+			Name: "slient",
+			Prompt: &survey.Confirm{
+				Message: "是否禁用日志输出？",
+				Default: false,
+			},
+		},
 	}
 
 	answers := struct {
-		Nic  []string
-		Disk []string
-		DNS  string
-		GPU  bool
+		Nic         []string
+		Disk        []string
+		DNS         string
+		GPU         bool
+		Temperature bool
+		Slient      bool
 	}{}
 
 	err = survey.Ask(qs, &answers, survey.WithValidator(survey.Required))
@@ -117,6 +133,8 @@ func editAgentConfig(cmd *cobra.Command, args []string) {
 	}
 
 	agentConfig.GPU = answers.GPU
+	agentConfig.Temperature = answers.Temperature
+	agentConfig.Slient = answers.Slient
 
 	if err = agentConfig.Save(); err != nil {
 		panic(err)
