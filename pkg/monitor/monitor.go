@@ -49,8 +49,17 @@ var (
 // 获取设备数据的最大尝试次数
 const maxDeviceDataFetchAttempts = 3
 
+// 获取主机数据的尝试次数，Key 为 Host 的属性名
+var hostDataFetchAttempts = map[string]int{
+	"CPU": 0,
+	"GPU": 0,
+}
+
 // 获取状态数据的尝试次数，Key 为 HostState 的属性名
-var deviceDataFetchAttempts = map[string]int{
+var statDataFetchAttempts = map[string]int{
+	"CPU":          0,
+	"Load":         0,
+	"GPU":          0,
 	"Temperatures": 0,
 }
 
@@ -67,7 +76,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	var cpuType string
 	hi, err := host.Info()
 	if err != nil {
-		util.Println("host.Info error:", err)
+		util.Println("host.Info error: ", err)
 	} else {
 		if hi.VirtualizationRole == "guest" {
 			cpuType = "Virtual"
@@ -86,31 +95,43 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	}
 
 	cpuModelCount := make(map[string]int)
-	ci, err := cpu.Info()
-	if err != nil {
-		util.Println("cpu.Info error:", err)
-	} else {
-		for i := 0; i < len(ci); i++ {
-			cpuModelCount[ci[i].ModelName]++
-		}
-		for model, count := range cpuModelCount {
-			if len(ci) > 1 {
-				ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", model, count, cpuType))
-			} else {
-				ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", model, ci[0].Cores, cpuType))
+	if hostDataFetchAttempts["CPU"] < maxDeviceDataFetchAttempts {
+		ci, err := cpu.Info()
+		if err != nil {
+			hostDataFetchAttempts["CPU"]++
+			util.Println("cpu.Info error: ", err, ", attempt: ", hostDataFetchAttempts["CPU"])
+		} else {
+			hostDataFetchAttempts["CPU"] = 0
+			for i := 0; i < len(ci); i++ {
+				cpuModelCount[ci[i].ModelName]++
+			}
+			for model, count := range cpuModelCount {
+				if len(ci) > 1 {
+					ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", model, count, cpuType))
+				} else {
+					ret.CPU = append(ret.CPU, fmt.Sprintf("%s %d %s Core", model, ci[0].Cores, cpuType))
+				}
 			}
 		}
 	}
 
 	if agentConfig.GPU {
-		ret.GPU = gpu.GetGPUModel()
+		if hostDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
+			ret.GPU, err = gpu.GetGPUModel()
+			if err != nil {
+				hostDataFetchAttempts["GPU"]++
+				util.Println("gpu.GetGPUModel error: ", err, ", attempt: ", hostDataFetchAttempts["GPU"])
+			} else {
+				hostDataFetchAttempts["GPU"] = 0
+			}
+		}
 	}
 
 	ret.DiskTotal, _ = getDiskTotalAndUsed(agentConfig)
 
 	mv, err := mem.VirtualMemory()
 	if err != nil {
-		util.Println("mem.VirtualMemory error:", err)
+		util.Println("mem.VirtualMemory error: ", err)
 	} else {
 		ret.MemTotal = mv.Total
 		if runtime.GOOS != "windows" {
@@ -121,7 +142,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	if runtime.GOOS == "windows" {
 		ms, err := mem.SwapMemory()
 		if err != nil {
-			util.Println("mem.SwapMemory error:", err)
+			util.Println("mem.SwapMemory error: ", err)
 		} else {
 			ret.SwapTotal = ms.Total
 		}
@@ -139,16 +160,20 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 	var ret model.HostState
 
-	cp, err := cpu.Percent(0, false)
-	if err != nil || len(cp) == 0 {
-		util.Println("cpu.Percent error:", err)
-	} else {
-		ret.CPU = cp[0]
+	if statDataFetchAttempts["CPU"] < maxDeviceDataFetchAttempts {
+		cp, err := cpu.Percent(0, false)
+		if err != nil || len(cp) == 0 {
+			statDataFetchAttempts["CPU"]++
+			util.Println("cpu.Percent error: ", err, ", attempt: ", statDataFetchAttempts["CPU"])
+		} else {
+			statDataFetchAttempts["CPU"] = 0
+			ret.CPU = cp[0]
+		}
 	}
 
 	vm, err := mem.VirtualMemory()
 	if err != nil {
-		util.Println("mem.VirtualMemory error:", err)
+		util.Println("mem.VirtualMemory error: ", err)
 	} else {
 		ret.MemUsed = vm.Total - vm.Available
 		if runtime.GOOS != "windows" {
@@ -159,7 +184,7 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		// gopsutil 在 Windows 下不能正确取 swap
 		ms, err := mem.SwapMemory()
 		if err != nil {
-			util.Println("mem.SwapMemory error:", err)
+			util.Println("mem.SwapMemory error: ", err)
 		} else {
 			ret.SwapUsed = ms.Used
 		}
@@ -167,20 +192,24 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 
 	_, ret.DiskUsed = getDiskTotalAndUsed(agentConfig)
 
-	loadStat, err := load.Avg()
-	if err != nil {
-		util.Println("load.Avg error:", err)
-	} else {
-		ret.Load1 = loadStat.Load1
-		ret.Load5 = loadStat.Load5
-		ret.Load15 = loadStat.Load15
+	if statDataFetchAttempts["Load"] < maxDeviceDataFetchAttempts {
+		loadStat, err := load.Avg()
+		if err != nil {
+			statDataFetchAttempts["Load"]++
+			util.Println("load.Avg error: ", err, ", attempt: ", statDataFetchAttempts["Load"])
+		} else {
+			statDataFetchAttempts["Load"] = 0
+			ret.Load1 = loadStat.Load1
+			ret.Load5 = loadStat.Load5
+			ret.Load15 = loadStat.Load15
+		}
 	}
 
 	var procs []int32
 	if !skipProcsCount {
 		procs, err = process.Pids()
 		if err != nil {
-			util.Println("process.Pids error:", err)
+			util.Println("process.Pids error: ", err)
 		} else {
 			ret.ProcessCount = uint64(len(procs))
 		}
@@ -324,16 +353,19 @@ func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *uint64) {
 		return
 	}
 	defer atomic.StoreInt32(&updateGPUStatus, 0)
+
 	if agentConfig.GPU {
-		gs, err := gpustat.GetGPUStat()
-		if err != nil {
-			util.Println("gpustat.GetGPUStat error:", err)
-			atomicStoreFloat64(gpuStat, gs)
-		} else {
-			atomicStoreFloat64(gpuStat, gs)
+		if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
+			gs, err := gpustat.GetGPUStat()
+			if err != nil {
+				statDataFetchAttempts["GPU"]++
+				util.Println("gpustat.GetGPUStat error: ", err, ", attempt: ", statDataFetchAttempts["GPU"])
+				atomicStoreFloat64(gpuStat, gs)
+			} else {
+				statDataFetchAttempts["GPU"] = 0
+				atomicStoreFloat64(gpuStat, gs)
+			}
 		}
-	} else {
-		atomicStoreFloat64(gpuStat, 0)
 	}
 }
 
@@ -343,13 +375,13 @@ func updateTemperatureStat() {
 	}
 	defer atomic.StoreInt32(&updateTempStatus, 0)
 
-	if deviceDataFetchAttempts["Temperatures"] <= maxDeviceDataFetchAttempts {
+	if statDataFetchAttempts["Temperatures"] < maxDeviceDataFetchAttempts {
 		temperatures, err := sensors.SensorsTemperatures()
 		if err != nil {
-			deviceDataFetchAttempts["Temperatures"]++
-			util.Println("host.SensorsTemperatures error:", err, "attempt:", deviceDataFetchAttempts["Temperatures"])
+			statDataFetchAttempts["Temperatures"]++
+			util.Println("host.SensorsTemperatures error: ", err, ", attempt: ", statDataFetchAttempts["Temperatures"])
 		} else {
-			deviceDataFetchAttempts["Temperatures"] = 0
+			statDataFetchAttempts["Temperatures"] = 0
 			tempStat := []model.SensorTemperature{}
 			for _, t := range temperatures {
 				if t.Temperature > 0 {
