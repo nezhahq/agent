@@ -53,6 +53,7 @@ type AgentCliParam struct {
 	InsecureTLS           bool   // 是否禁用证书检查
 	Version               bool   // 当前版本号
 	IPReportPeriod        uint32 // 上报IP间隔
+	UseIPv6CountryCode       bool   // 默认优先展示IPv6旗帜
 }
 
 var (
@@ -149,6 +150,7 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableCommandExecute, "disable-command-execute", false, "禁止在此机器上执行命令")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseIPv6CountryCode, "use-ipv6-countrycode", false, "使用IPv6的位置上报")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
 	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
@@ -221,7 +223,7 @@ func run() {
 	// 上报服务器信息
 	go reportState()
 	// 更新IP信息
-	go monitor.UpdateIP(agentConfig.Slient, agentCliParam.IPReportPeriod)
+	go monitor.UpdateIP(agentConfig.Slient, agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
