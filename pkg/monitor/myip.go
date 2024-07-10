@@ -3,7 +3,6 @@ package monitor
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -55,9 +54,9 @@ var (
 )
 
 // UpdateIP 按设置时间间隔更新IP地址与国家码的缓存
-func UpdateIP(useIPv6CountryCode bool, period uint32) {
+func UpdateIP(logging bool, useIPv6CountryCode bool, period uint32) {
 	for {
-		log.Println("NEZHA_AGENT>> 正在更新本地缓存IP信息")
+		util.Println(logging, "NEZHA_AGENT>> 正在更新本地缓存IP信息")
 		var primaryIP, secondaryIP geoIP
 		if useIPv6CountryCode {
 			primaryIP = fetchGeoIP(geoIPApiList, true)

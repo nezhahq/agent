@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -37,6 +36,7 @@ var (
 	excludeNetInterfaces = []string{
 		"lo", "tun", "docker", "veth", "br-", "vmbr", "vnet", "kube",
 	}
+	agentConfig *model.AgentConfig
 )
 
 var (
@@ -66,17 +66,20 @@ var statDataFetchAttempts = map[string]int{
 var (
 	updateGPUStatus  int32
 	updateTempStatus int32
-	tempWriteLock    sync.RWMutex
 )
 
+func InitConfig(cfg *model.AgentConfig) {
+	agentConfig = cfg
+}
+
 // GetHost 获取主机硬件信息
-func GetHost(agentConfig *model.AgentConfig) *model.Host {
+func GetHost() *model.Host {
 	var ret model.Host
 
 	var cpuType string
 	hi, err := host.Info()
 	if err != nil {
-		util.Println("host.Info error: ", err)
+		println("host.Info error: ", err)
 	} else {
 		if hi.VirtualizationRole == "guest" {
 			cpuType = "Virtual"
@@ -99,7 +102,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 		ci, err := cpu.Info()
 		if err != nil {
 			hostDataFetchAttempts["CPU"]++
-			util.Println("cpu.Info error: ", err, ", attempt: ", hostDataFetchAttempts["CPU"])
+			println("cpu.Info error: ", err, ", attempt: ", hostDataFetchAttempts["CPU"])
 		} else {
 			hostDataFetchAttempts["CPU"] = 0
 			for i := 0; i < len(ci); i++ {
@@ -120,18 +123,18 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 			ret.GPU, err = gpu.GetGPUModel()
 			if err != nil {
 				hostDataFetchAttempts["GPU"]++
-				util.Println("gpu.GetGPUModel error: ", err, ", attempt: ", hostDataFetchAttempts["GPU"])
+				println("gpu.GetGPUModel error: ", err, ", attempt: ", hostDataFetchAttempts["GPU"])
 			} else {
 				hostDataFetchAttempts["GPU"] = 0
 			}
 		}
 	}
 
-	ret.DiskTotal, _ = getDiskTotalAndUsed(agentConfig)
+	ret.DiskTotal, _ = getDiskTotalAndUsed()
 
 	mv, err := mem.VirtualMemory()
 	if err != nil {
-		util.Println("mem.VirtualMemory error: ", err)
+		println("mem.VirtualMemory error: ", err)
 	} else {
 		ret.MemTotal = mv.Total
 		if runtime.GOOS != "windows" {
@@ -142,7 +145,7 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	if runtime.GOOS == "windows" {
 		ms, err := mem.SwapMemory()
 		if err != nil {
-			util.Println("mem.SwapMemory error: ", err)
+			println("mem.SwapMemory error: ", err)
 		} else {
 			ret.SwapTotal = ms.Total
 		}
@@ -157,14 +160,14 @@ func GetHost(agentConfig *model.AgentConfig) *model.Host {
 	return &ret
 }
 
-func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProcsCount bool) *model.HostState {
+func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 	var ret model.HostState
 
 	if statDataFetchAttempts["CPU"] < maxDeviceDataFetchAttempts {
 		cp, err := cpu.Percent(0, false)
 		if err != nil || len(cp) == 0 {
 			statDataFetchAttempts["CPU"]++
-			util.Println("cpu.Percent error: ", err, ", attempt: ", statDataFetchAttempts["CPU"])
+			println("cpu.Percent error: ", err, ", attempt: ", statDataFetchAttempts["CPU"])
 		} else {
 			statDataFetchAttempts["CPU"] = 0
 			ret.CPU = cp[0]
@@ -173,7 +176,7 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 
 	vm, err := mem.VirtualMemory()
 	if err != nil {
-		util.Println("mem.VirtualMemory error: ", err)
+		println("mem.VirtualMemory error: ", err)
 	} else {
 		ret.MemUsed = vm.Total - vm.Available
 		if runtime.GOOS != "windows" {
@@ -184,19 +187,19 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		// gopsutil 在 Windows 下不能正确取 swap
 		ms, err := mem.SwapMemory()
 		if err != nil {
-			util.Println("mem.SwapMemory error: ", err)
+			println("mem.SwapMemory error: ", err)
 		} else {
 			ret.SwapUsed = ms.Used
 		}
 	}
 
-	_, ret.DiskUsed = getDiskTotalAndUsed(agentConfig)
+	_, ret.DiskUsed = getDiskTotalAndUsed()
 
 	if statDataFetchAttempts["Load"] < maxDeviceDataFetchAttempts {
 		loadStat, err := load.Avg()
 		if err != nil {
 			statDataFetchAttempts["Load"]++
-			util.Println("load.Avg error: ", err, ", attempt: ", statDataFetchAttempts["Load"])
+			println("load.Avg error: ", err, ", attempt: ", statDataFetchAttempts["Load"])
 		} else {
 			statDataFetchAttempts["Load"] = 0
 			ret.Load1 = loadStat.Load1
@@ -209,7 +212,7 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 	if !skipProcsCount {
 		procs, err = process.Pids()
 		if err != nil {
-			util.Println("process.Pids error: ", err)
+			println("process.Pids error: ", err)
 		} else {
 			ret.ProcessCount = uint64(len(procs))
 		}
@@ -249,14 +252,15 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 		}
 	}
 
-	go updateTemperatureStat()
+	if agentConfig.Temperature {
+		go updateTemperatureStat()
+		ret.Temperatures = temperatureStat
+	}
 
-	tempWriteLock.RLock()
-	defer tempWriteLock.RUnlock()
-	ret.Temperatures = temperatureStat
-
-	go updateGPUStat(agentConfig, &gpuStat)
-	ret.GPU = math.Float64frombits(gpuStat)
+	if agentConfig.GPU {
+		go updateGPUStat(&gpuStat)
+		ret.GPU = math.Float64frombits(gpuStat)
+	}
 
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
@@ -267,7 +271,7 @@ func GetState(agentConfig *model.AgentConfig, skipConnectionCount bool, skipProc
 }
 
 // TrackNetworkSpeed NIC监控，统计流量与速度
-func TrackNetworkSpeed(agentConfig *model.AgentConfig) {
+func TrackNetworkSpeed() {
 	var innerNetInTransfer, innerNetOutTransfer uint64
 	nc, err := net.IOCounters(true)
 	if err == nil {
@@ -296,7 +300,7 @@ func TrackNetworkSpeed(agentConfig *model.AgentConfig) {
 	}
 }
 
-func getDiskTotalAndUsed(agentConfig *model.AgentConfig) (total uint64, used uint64) {
+func getDiskTotalAndUsed() (total uint64, used uint64) {
 	devices := make(map[string]string)
 
 	if len(agentConfig.HardDrivePartitionAllowlist) > 0 {
@@ -348,23 +352,21 @@ func getDiskTotalAndUsed(agentConfig *model.AgentConfig) (total uint64, used uin
 	return
 }
 
-func updateGPUStat(agentConfig *model.AgentConfig, gpuStat *uint64) {
+func updateGPUStat(gpuStat *uint64) {
 	if !atomic.CompareAndSwapInt32(&updateGPUStatus, 0, 1) {
 		return
 	}
 	defer atomic.StoreInt32(&updateGPUStatus, 0)
 
-	if agentConfig.GPU {
-		if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
-			gs, err := gpustat.GetGPUStat()
-			if err != nil {
-				statDataFetchAttempts["GPU"]++
-				util.Println("gpustat.GetGPUStat error: ", err, ", attempt: ", statDataFetchAttempts["GPU"])
-				atomicStoreFloat64(gpuStat, gs)
-			} else {
-				statDataFetchAttempts["GPU"] = 0
-				atomicStoreFloat64(gpuStat, gs)
-			}
+	if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
+		gs, err := gpustat.GetGPUStat()
+		if err != nil {
+			statDataFetchAttempts["GPU"]++
+			println("gpustat.GetGPUStat error: ", err, ", attempt: ", statDataFetchAttempts["GPU"])
+			atomicStoreFloat64(gpuStat, gs)
+		} else {
+			statDataFetchAttempts["GPU"] = 0
+			atomicStoreFloat64(gpuStat, gs)
 		}
 	}
 }
@@ -379,7 +381,7 @@ func updateTemperatureStat() {
 		temperatures, err := sensors.SensorsTemperatures()
 		if err != nil {
 			statDataFetchAttempts["Temperatures"]++
-			util.Println("host.SensorsTemperatures error: ", err, ", attempt: ", statDataFetchAttempts["Temperatures"])
+			println("host.SensorsTemperatures error: ", err, ", attempt: ", statDataFetchAttempts["Temperatures"])
 		} else {
 			statDataFetchAttempts["Temperatures"] = 0
 			tempStat := []model.SensorTemperature{}
@@ -392,8 +394,6 @@ func updateTemperatureStat() {
 				}
 			}
 
-			tempWriteLock.Lock()
-			defer tempWriteLock.Unlock()
 			temperatureStat = tempStat
 		}
 	}
@@ -410,4 +410,8 @@ func isListContainsStr(list []string, str string) bool {
 
 func atomicStoreFloat64(x *uint64, v float64) {
 	atomic.StoreUint64(x, math.Float64bits(v))
+}
+
+func println(v ...interface{}) {
+	util.Println(agentConfig.Slient, v...)
 }

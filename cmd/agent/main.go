@@ -152,10 +152,14 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseIPv6CountryCode, "use-ipv6-countrycode", false, "使用IPv6的位置上报")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
+	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
 	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
+	agentCmd.Flags().BoolVarP(&agentConfig.Slient, "slient", "q", false, "关闭日志输出")
 	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 
 	agentConfig.Read(filepath.Dir(ex) + "/config.yml")
+
+	monitor.InitConfig(&agentConfig)
 }
 
 func main() {
@@ -219,7 +223,7 @@ func run() {
 	// 上报服务器信息
 	go reportState()
 	// 更新IP信息
-	go monitor.UpdateIP(agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
+	go monitor.UpdateIP(agentConfig.Slient, agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
@@ -267,7 +271,7 @@ func run() {
 		client = pb.NewNezhaServiceClient(conn)
 		// 第一步注册
 		timeOutCtx, cancel = context.WithTimeout(context.Background(), networkTimeOut)
-		_, err = client.ReportSystemInfo(timeOutCtx, monitor.GetHost(&agentConfig).PB())
+		_, err = client.ReportSystemInfo(timeOutCtx, monitor.GetHost().PB())
 		if err != nil {
 			println("上报系统信息失败：", err)
 			cancel()
@@ -277,7 +281,7 @@ func run() {
 		cancel()
 		inited = true
 		// 执行 Task
-		tasks, err := client.RequestTask(context.Background(), monitor.GetHost(&agentConfig).PB())
+		tasks, err := client.RequestTask(context.Background(), monitor.GetHost().PB())
 		if err != nil {
 			println("请求任务失败：", err)
 			retry()
@@ -400,9 +404,9 @@ func reportState() {
 	for {
 		// 为了更准确的记录时段流量，inited 后再上传状态信息
 		if client != nil && inited {
-			monitor.TrackNetworkSpeed(&agentConfig)
+			monitor.TrackNetworkSpeed()
 			timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
-			_, err = client.ReportSystemState(timeOutCtx, monitor.GetState(&agentConfig, agentCliParam.SkipConnectionCount, agentCliParam.SkipProcsCount).PB())
+			_, err = client.ReportSystemState(timeOutCtx, monitor.GetState(agentCliParam.SkipConnectionCount, agentCliParam.SkipProcsCount).PB())
 			cancel()
 			if err != nil {
 				println("reportState error", err)
@@ -411,7 +415,7 @@ func reportState() {
 			// 每10分钟重新获取一次硬件信息
 			if lastReportHostInfo.Before(time.Now().Add(-10 * time.Minute)) {
 				lastReportHostInfo = time.Now()
-				client.ReportSystemInfo(context.Background(), monitor.GetHost(&agentConfig).PB())
+				client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
 			}
 		}
 		time.Sleep(time.Second * time.Duration(agentCliParam.ReportDelay))
@@ -709,7 +713,7 @@ func handleTerminalTask(task *pb.Task) {
 
 func println(v ...interface{}) {
 	if agentCliParam.Debug {
-		util.Println(v...)
+		util.Println(agentConfig.Slient, v...)
 	}
 }
 
