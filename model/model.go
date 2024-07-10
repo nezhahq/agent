@@ -12,6 +12,8 @@ type AgentConfig struct {
 	NICAllowlist                map[string]bool
 	DNS                         []string
 	GPU                         bool
+	Temperature                 bool
+	Slient                      bool
 	v                           *viper.Viper
 }
 

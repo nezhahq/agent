@@ -19,11 +19,13 @@ func IsWindows() bool {
 	return os.PathSeparator == '\\' && os.PathListSeparator == ';'
 }
 
-func Println(v ...interface{}) {
-	if runtime.GOOS != "darwin" {
-		Logger.Infof("NEZHA@%s>> %v", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprint(v...))
-	} else {
-		fmt.Printf("NEZHA@%s>> ", time.Now().Format("2006-01-02 15:04:05"))
-		fmt.Println(v...)
+func Println(disabled bool, v ...interface{}) {
+	if !disabled {
+		if runtime.GOOS != "darwin" {
+			Logger.Infof("NEZHA@%s>> %v", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprint(v...))
+		} else {
+			fmt.Printf("NEZHA@%s>> ", time.Now().Format("2006-01-02 15:04:05"))
+			fmt.Println(v...)
+		}
 	}
 }
