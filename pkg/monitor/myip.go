@@ -55,11 +55,11 @@ var (
 )
 
 // UpdateIP 按设置时间间隔更新IP地址与国家码的缓存
-func UpdateIP(IPV6CountryCode bool, period uint32) {
+func UpdateIP(useIPv6CountryCode bool, period uint32) {
 	for {
 		log.Println("NEZHA_AGENT>> 正在更新本地缓存IP信息")
 		var primaryIP, secondaryIP geoIP
-		if IPV6CountryCode {
+		if useIPv6CountryCode {
 			primaryIP = fetchGeoIP(geoIPApiList, true)
 			secondaryIP = fetchGeoIP(geoIPApiList, false)
 		} else {
