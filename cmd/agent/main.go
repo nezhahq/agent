@@ -157,7 +157,7 @@ func init() {
 
 	agentConfig.Read(filepath.Dir(ex) + "/config.yml")
 
-	monitor.GetConfig(&agentConfig)
+	monitor.InitConfig(&agentConfig)
 }
 
 func main() {

@@ -67,10 +67,9 @@ var statDataFetchAttempts = map[string]int{
 var (
 	updateGPUStatus  int32
 	updateTempStatus int32
-	tempWriteLock    sync.RWMutex
 )
 
-func GetConfig(cfg *model.AgentConfig) {
+func InitConfig(cfg *model.AgentConfig) {
 	agentConfig = cfg
 }
 
@@ -256,9 +255,6 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 
 	if agentConfig.Temperature {
 		go updateTemperatureStat()
-
-		tempWriteLock.RLock()
-		defer tempWriteLock.RUnlock()
 		ret.Temperatures = temperatureStat
 	}
 
@@ -399,8 +395,6 @@ func updateTemperatureStat() {
 				}
 			}
 
-			tempWriteLock.Lock()
-			defer tempWriteLock.Unlock()
 			temperatureStat = tempStat
 		}
 	}
