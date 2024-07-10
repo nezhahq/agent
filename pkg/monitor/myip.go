@@ -55,12 +55,19 @@ var (
 )
 
 // UpdateIP 按设置时间间隔更新IP地址与国家码的缓存
-func UpdateIP(period uint32) {
+func UpdateIP(useIPv6CountryCode bool, period uint32) {
 	for {
 		log.Println("NEZHA_AGENT>> 正在更新本地缓存IP信息")
-		ipv4 := fetchGeoIP(geoIPApiList, false)
-		ipv6 := fetchGeoIP(geoIPApiList, true)
-		if ipv4.IP == "" && ipv6.IP == "" {
+		var primaryIP, secondaryIP geoIP
+		if useIPv6CountryCode {
+			primaryIP = fetchGeoIP(geoIPApiList, true)
+			secondaryIP = fetchGeoIP(geoIPApiList, false)
+		} else {
+			primaryIP = fetchGeoIP(geoIPApiList, false)
+			secondaryIP = fetchGeoIP(geoIPApiList, true)
+		}
+
+		if primaryIP.IP == "" && secondaryIP.IP == "" {
 			if period > 60 {
 				time.Sleep(time.Minute)
 			} else {
@@ -68,15 +75,16 @@ func UpdateIP(period uint32) {
 			}
 			continue
 		}
-		if ipv4.IP == "" || ipv6.IP == "" {
-			CachedIP = fmt.Sprintf("%s%s", ipv4.IP, ipv6.IP)
+		if primaryIP.IP == "" || secondaryIP.IP == "" {
+			CachedIP = fmt.Sprintf("%s%s", primaryIP.IP, secondaryIP.IP)
 		} else {
-			CachedIP = fmt.Sprintf("%s/%s", ipv4.IP, ipv6.IP)
+			CachedIP = fmt.Sprintf("%s/%s", primaryIP.IP, secondaryIP.IP)
 		}
-		if ipv4.CountryCode != "" {
-			cachedCountry = ipv4.CountryCode
-		} else if ipv6.CountryCode != "" {
-			cachedCountry = ipv6.CountryCode
+
+		if primaryIP.CountryCode != "" {
+			cachedCountry = primaryIP.CountryCode
+		} else if secondaryIP.CountryCode != "" {
+			cachedCountry = secondaryIP.CountryCode
 		}
 		time.Sleep(time.Second * time.Duration(period))
 	}
