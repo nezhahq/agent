@@ -94,7 +94,7 @@ func editAgentConfig(cmd *cobra.Command, args []string) {
 		DNS         string
 		GPU         bool
 		Temperature bool
-		Slient      bool
+		Silent      bool
 	}{}
 
 	err = survey.Ask(qs, &answers, survey.WithValidator(survey.Required))
@@ -134,7 +134,7 @@ func editAgentConfig(cmd *cobra.Command, args []string) {
 
 	agentConfig.GPU = answers.GPU
 	agentConfig.Temperature = answers.Temperature
-	agentConfig.Slient = answers.Slient
+	agentConfig.Silent = answers.Silent
 
 	if err = agentConfig.Save(); err != nil {
 		panic(err)

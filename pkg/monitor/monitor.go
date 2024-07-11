@@ -413,5 +413,5 @@ func atomicStoreFloat64(x *uint64, v float64) {
 }
 
 func println(v ...interface{}) {
-	util.Println(agentConfig.Slient, v...)
+	util.Println(agentConfig.Silent, v...)
 }

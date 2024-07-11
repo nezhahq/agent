@@ -154,7 +154,7 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
 	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
-	agentCmd.Flags().BoolVarP(&agentConfig.Slient, "slient", "q", false, "关闭日志输出")
+	agentCmd.PersistentFlags().BoolVarP(&agentConfig.Silent, "silent", "q", false, "关闭日志输出")
 	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 
 	agentConfig.Read(filepath.Dir(ex) + "/config.yml")
@@ -223,7 +223,7 @@ func run() {
 	// 上报服务器信息
 	go reportState()
 	// 更新IP信息
-	go monitor.UpdateIP(agentConfig.Slient, agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
+	go monitor.UpdateIP(agentConfig.Silent, agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
@@ -713,7 +713,7 @@ func handleTerminalTask(task *pb.Task) {
 
 func println(v ...interface{}) {
 	if agentCliParam.Debug {
-		util.Println(agentConfig.Slient, v...)
+		util.Println(agentConfig.Silent, v...)
 	}
 }
 

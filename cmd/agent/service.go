@@ -89,6 +89,7 @@ func serviceActions(cmd *cobra.Command, args []string) {
 		{agentCliParam.UseIPv6CountryCode, "--use-ipv6-countrycode", ""},
 		{agentConfig.GPU, "--gpu", ""},
 		{agentCliParam.IPReportPeriod != 30*60, "-u", fmt.Sprint(agentCliParam.IPReportPeriod)},
+		{agentConfig.GPU, "--silent", ""},
 	}
 
 	for _, f := range flags {
