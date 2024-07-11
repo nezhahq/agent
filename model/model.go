@@ -13,7 +13,7 @@ type AgentConfig struct {
 	DNS                         []string
 	GPU                         bool
 	Temperature                 bool
-	Slient                      bool
+	Silent                      bool
 	v                           *viper.Viper
 }
 
