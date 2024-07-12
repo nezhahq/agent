@@ -80,9 +80,9 @@ func editAgentConfig(cmd *cobra.Command, args []string) {
 			},
 		},
 		{
-			Name: "slient",
+			Name: "debug",
 			Prompt: &survey.Confirm{
-				Message: "是否禁用日志输出？",
+				Message: "是否开启调试模式？",
 				Default: false,
 			},
 		},
@@ -94,7 +94,7 @@ func editAgentConfig(cmd *cobra.Command, args []string) {
 		DNS         string
 		GPU         bool
 		Temperature bool
-		Silent      bool
+		Debug       bool
 	}{}
 
 	err = survey.Ask(qs, &answers, survey.WithValidator(survey.Required))
@@ -134,7 +134,7 @@ func editAgentConfig(cmd *cobra.Command, args []string) {
 
 	agentConfig.GPU = answers.GPU
 	agentConfig.Temperature = answers.Temperature
-	agentConfig.Silent = answers.Silent
+	agentConfig.Debug = answers.Debug
 
 	if err = agentConfig.Save(); err != nil {
 		panic(err)
