@@ -79,7 +79,7 @@ func serviceActions(cmd *cobra.Command, args []string) {
 		{agentCliParam.Server != "localhost:5555", "-s", agentCliParam.Server},
 		{agentCliParam.ClientSecret != "", "-p", agentCliParam.ClientSecret},
 		{agentCliParam.TLS, "--tls", ""},
-		{agentCliParam.Debug, "-d", ""},
+		{agentConfig.Debug, "-d", ""},
 		{agentCliParam.ReportDelay != 1, "--report-delay", fmt.Sprint(agentCliParam.ReportDelay)},
 		{agentCliParam.SkipConnectionCount, "--skip-conn", ""},
 		{agentCliParam.SkipProcsCount, "--skip-procs", ""},
