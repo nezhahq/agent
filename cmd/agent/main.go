@@ -45,7 +45,6 @@ type AgentCliParam struct {
 	DisableAutoUpdate     bool   // 关闭自动更新
 	DisableForceUpdate    bool   // 关闭强制更新
 	DisableCommandExecute bool   // 关闭命令执行
-	Debug                 bool   // debug模式
 	Server                string // 服务器地址
 	ClientSecret          string // 客户端密钥
 	ReportDelay           int    // 报告间隔
@@ -53,7 +52,7 @@ type AgentCliParam struct {
 	InsecureTLS           bool   // 是否禁用证书检查
 	Version               bool   // 当前版本号
 	IPReportPeriod        uint32 // 上报IP间隔
-	UseIPv6CountryCode       bool   // 默认优先展示IPv6旗帜
+	UseIPv6CountryCode    bool   // 默认优先展示IPv6旗帜
 }
 
 var (
@@ -143,7 +142,7 @@ func init() {
 	agentCmd.PersistentFlags().StringVarP(&agentCliParam.ClientSecret, "password", "p", "", "Agent连接Secret")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
 	agentCmd.PersistentFlags().BoolVarP(&agentCliParam.InsecureTLS, "insecure", "k", false, "禁用证书检查")
-	agentCmd.PersistentFlags().BoolVarP(&agentCliParam.Debug, "debug", "d", false, "开启调试信息")
+	agentCmd.PersistentFlags().BoolVarP(&agentConfig.Debug, "debug", "d", false, "开启调试信息")
 	agentCmd.PersistentFlags().IntVar(&agentCliParam.ReportDelay, "report-delay", 1, "系统状态上报间隔")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.SkipConnectionCount, "skip-conn", false, "不监控连接数")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.SkipProcsCount, "skip-procs", false, "不监控进程数")
@@ -154,7 +153,6 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
 	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
-	agentCmd.Flags().BoolVarP(&agentConfig.Slient, "slient", "q", false, "关闭日志输出")
 	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 
 	agentConfig.Read(filepath.Dir(ex) + "/config.yml")
@@ -223,7 +221,7 @@ func run() {
 	// 上报服务器信息
 	go reportState()
 	// 更新IP信息
-	go monitor.UpdateIP(agentConfig.Slient, agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
+	go monitor.UpdateIP(agentConfig.Debug, agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
@@ -712,9 +710,7 @@ func handleTerminalTask(task *pb.Task) {
 }
 
 func println(v ...interface{}) {
-	if agentCliParam.Debug {
-		util.Println(agentConfig.Slient, v...)
-	}
+	util.Println(agentConfig.Debug, v...)
 }
 
 func generateQueue(start int, size int) []int {
