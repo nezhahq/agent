@@ -1,16 +1,16 @@
-name: Sync
+name: Sync Code to Gitee
 
 on:
   push:
     branches: [main]
 
 jobs:
-  sync-to-jihulab:
+  sync-code-to-gitee:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: adambirds/sync-github-to-gitlab-action@v1.1.0
         with:
           destination_repository: git@gitee.com:naibahq/agent.git
-          destination_branch_name: master
+          destination_branch_name: main
           destination_ssh_key: ${{ secrets.GITEE_SSH_KEY }}
