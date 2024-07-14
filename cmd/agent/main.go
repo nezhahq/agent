@@ -52,6 +52,7 @@ type AgentCliParam struct {
 	Version               bool   // 当前版本号
 	IPReportPeriod        uint32 // 上报IP间隔
 	UseIPv6CountryCode    bool   // 默认优先展示IPv6旗帜
+	UseGiteeToUpgrade      bool   // 强制从Gitee获取更新
 }
 
 var (
@@ -121,7 +122,7 @@ func init() {
 		return nil, err
 	}
 
-	http.DefaultClient.Timeout = time.Second * 5
+	http.DefaultClient.Timeout = time.Second * 30
 	httpClient.Transport = bpc.AddCloudFlareByPass(httpClient.Transport, bpc.Options{
 		AddMissingHeaders: true,
 		Headers: map[string]string{
@@ -151,6 +152,7 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseIPv6CountryCode, "use-ipv6-countrycode", false, "使用IPv6的位置上报")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseGiteeToUpgrade, "gitee", false, "使用Gitee获取更新")
 	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
 	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 
@@ -423,12 +425,19 @@ func reportState() {
 
 // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
 func doSelfUpdate(useLocalVersion bool) {
+	<-monitor.Sync
 	v := semver.MustParse("0.1.0")
 	if useLocalVersion {
 		v = semver.MustParse(version)
 	}
 	println("检查更新：", v)
-	latest, err := selfupdate.UpdateSelf(v, "nezhahq/agent")
+	var latest *selfupdate.Release
+	var err error
+	if monitor.CachedCountry != "CN" && !agentCliParam.UseGiteeToUpgrade {
+		latest, err = selfupdate.UpdateSelf(v, "nezhahq/agent")
+	} else {
+		latest, err = selfupdate.UpdateSelfGitee(v, "naibahq/agent")
+	}
 	if err != nil {
 		println("更新失败：", err)
 		return

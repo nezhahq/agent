@@ -15,7 +15,7 @@ require (
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/jaypipes/ghw v0.12.0
 	github.com/json-iterator/go v1.1.12
-	github.com/nezhahq/go-github-selfupdate v0.0.0-20240418134522-9d84a13bbf2d
+	github.com/nezhahq/go-github-selfupdate v0.0.0-20240713123605-d560a87d03a0
 	github.com/nezhahq/service v0.0.0-20240704142721-eba37f9cc709
 	github.com/quic-go/quic-go v0.40.1
 	github.com/shirou/gopsutil/v4 v4.24.6
@@ -27,10 +27,12 @@ require (
 )
 
 require (
+	gitee.com/naibahq/go-gitee v0.0.0-20240713052758-bc992e4c5b2c // indirect
 	github.com/EDDYCJY/fake-useragent v0.2.0 // indirect
 	github.com/PuerkitoBio/goquery v1.8.1 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
+	github.com/antihax/optional v1.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect

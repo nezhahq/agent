@@ -48,7 +48,8 @@ var (
 		// "https://ip.seeip.org/geoip", // 不精确
 		// "https://freegeoip.app/json/", // 需要 Key
 	}
-	CachedIP, cachedCountry string
+	CachedIP, CachedCountry string
+	Sync                    = make(chan bool)
 	httpClientV4            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
 	httpClientV6            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
 )
@@ -81,10 +82,16 @@ func UpdateIP(logging bool, useIPv6CountryCode bool, period uint32) {
 		}
 
 		if primaryIP.CountryCode != "" {
-			cachedCountry = primaryIP.CountryCode
+			CachedCountry = primaryIP.CountryCode
 		} else if secondaryIP.CountryCode != "" {
-			cachedCountry = secondaryIP.CountryCode
+			CachedCountry = secondaryIP.CountryCode
 		}
+
+		select {
+		case Sync <- true:
+		default:
+		}
+
 		time.Sleep(time.Second * time.Duration(period))
 	}
 }
