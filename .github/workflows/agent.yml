@@ -37,6 +37,6 @@ jobs:
             await github.rest.actions.createWorkflowDispatch({
             owner: 'nezhahq',
             repo: 'agent',
-            workflow_id: 'sync.yml',
+            workflow_id: 'sync-release.yml',
             ref: 'main'
             })
