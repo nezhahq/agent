@@ -52,7 +52,7 @@ type AgentCliParam struct {
 	Version               bool   // 当前版本号
 	IPReportPeriod        uint32 // 上报IP间隔
 	UseIPv6CountryCode    bool   // 默认优先展示IPv6旗帜
-	UseGiteeToUpgrade      bool   // 强制从Gitee获取更新
+	UseGiteeToUpgrade     bool   // 强制从Gitee获取更新
 }
 
 var (
@@ -222,7 +222,7 @@ func run() {
 	// 上报服务器信息
 	go reportState()
 	// 更新IP信息
-	go monitor.UpdateIP(agentConfig.Debug, agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
+	go monitor.UpdateIP(agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
@@ -388,8 +388,10 @@ func doTask(task *pb.Task) {
 	case model.TaskTypeTerminalGRPC:
 		handleTerminalTask(task)
 		return
-	case model.TaskTypeKeepalive:
+	case model.TaskTypeNAT:
+		handleNATTask(task)
 		return
+	case model.TaskTypeKeepalive:
 	default:
 		println("不支持的任务：", task)
 		return
@@ -668,7 +670,7 @@ func handleTerminalTask(task *pb.Task) {
 
 	go func() {
 		for {
-			buf := make([]byte, 1024)
+			buf := make([]byte, 10240)
 			read, err := tty.Read(buf)
 			if err != nil {
 				remoteIO.Send(&pb.IOStreamData{Data: []byte(err.Error())})
@@ -699,6 +701,63 @@ func handleTerminalTask(task *pb.Task) {
 			}
 			tty.Setsize(resizeMessage.Cols, resizeMessage.Rows)
 		}
+	}
+}
+
+func handleNATTask(task *pb.Task) {
+	var nat model.TaskNAT
+	err := util.Json.Unmarshal([]byte(task.GetData()), &nat)
+	if err != nil {
+		println("NAT 任务解析错误：", err)
+		return
+	}
+
+	remoteIO, err := client.IOStream(context.Background())
+	if err != nil {
+		println("NAT IOStream失败：", err)
+		return
+	}
+
+	// 发送 StreamID
+	if err := remoteIO.Send(&pb.IOStreamData{Data: append([]byte{
+		0xff, 0x05, 0xff, 0x05,
+	}, []byte(nat.StreamID)...)}); err != nil {
+		println("NAT 发送StreamID失败：", err)
+		return
+	}
+
+	conn, err := net.Dial("tcp", nat.Host)
+	if err != nil {
+		println(fmt.Sprintf("NAT Dial %s 失败：%s", nat.Host, err))
+		return
+	}
+
+	defer func() {
+		err := conn.Close()
+		errCloseSend := remoteIO.CloseSend()
+		println("NAT exit", nat.StreamID, err, errCloseSend)
+	}()
+	println("NAT init", nat.StreamID)
+
+	go func() {
+		buf := make([]byte, 10240)
+		for {
+			read, err := conn.Read(buf)
+			if err != nil {
+				remoteIO.Send(&pb.IOStreamData{Data: []byte(err.Error())})
+				remoteIO.CloseSend()
+				return
+			}
+			remoteIO.Send(&pb.IOStreamData{Data: buf[:read]})
+		}
+	}()
+
+	for {
+		var remoteData *pb.IOStreamData
+		if remoteData, err = remoteIO.Recv(); err != nil {
+			return
+		}
+		conn.Write(remoteData.Data)
 	}
 }
 
