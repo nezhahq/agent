@@ -21,7 +21,6 @@ import (
 	"github.com/blang/semver"
 	"github.com/ebi-yade/altsvc-go"
 	"github.com/go-ping/ping"
-	"github.com/gorilla/websocket"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
 	"github.com/nezhahq/service"
 	"github.com/quic-go/quic-go/http3"
@@ -374,8 +373,6 @@ func doTask(task *pb.Task) {
 	result.Id = task.GetId()
 	result.Type = task.GetType()
 	switch task.GetType() {
-	case model.TaskTypeTerminal:
-		handleTerminalTask(task)
 	case model.TaskTypeHTTPGET:
 		handleHttpGetTask(task, &result)
 	case model.TaskTypeICMPPing:
@@ -386,10 +383,14 @@ func doTask(task *pb.Task) {
 		handleCommandTask(task, &result)
 	case model.TaskTypeUpgrade:
 		handleUpgradeTask(task, &result)
+	case model.TaskTypeTerminalGRPC:
+		handleTerminalTask(task)
+		return
 	case model.TaskTypeKeepalive:
 		return
 	default:
 		println("不支持的任务：", task)
+		return
 	}
 	client.ReportTask(context.Background(), &result)
 }
@@ -438,7 +439,7 @@ func doSelfUpdate(useLocalVersion bool) {
 	}
 }
 
-func handleUpgradeTask(task *pb.Task, result *pb.TaskResult) {
+func handleUpgradeTask(*pb.Task, *pb.TaskResult) {
 	if agentCliParam.DisableForceUpdate {
 		return
 	}
@@ -628,24 +629,20 @@ func handleTerminalTask(task *pb.Task) {
 		println("Terminal 任务解析错误：", err)
 		return
 	}
-	protocol := "ws"
-	if terminal.UseSSL {
-		protocol += "s"
-	}
-	header := http.Header{}
-	header.Add("Secret", agentCliParam.ClientSecret)
-	// 目前只兼容Cloudflare验证
-	// 后续可能需要兼容更多的Cookie验证情况
-	if terminal.Cookie != "" {
-		cfCookie := fmt.Sprintf("CF_Authorization=%s", terminal.Cookie)
-		header.Add("Cookie", cfCookie)
-	}
-	conn, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("%s://%s/terminal/%s", protocol, terminal.Host, terminal.Session), header)
+
+	remoteIO, err := client.IOStream(context.Background())
 	if err != nil {
-		println("Terminal 连接失败：", err)
+		println("Terminal IOStream失败：", err)
 		return
 	}
-	defer conn.Close()
+
+	// 发送 StreamID
+	if err := remoteIO.Send(&pb.IOStreamData{Data: append([]byte{
+		0xff, 0x05, 0xff, 0x05,
+	}, []byte(terminal.StreamID)...)}); err != nil {
+		println("Terminal 发送StreamID失败：", err)
+		return
+	}
 
 	tty, err := pty.Start()
 	if err != nil {
@@ -655,50 +652,37 @@ func handleTerminalTask(task *pb.Task) {
 
 	defer func() {
 		err := tty.Close()
-		conn.Close()
-		println("terminal exit", terminal.Session, err)
+		errCloseSend := remoteIO.CloseSend()
+		println("terminal exit", terminal.StreamID, err, errCloseSend)
 	}()
-	println("terminal init", terminal.Session)
+	println("terminal init", terminal.StreamID)
 
 	go func() {
 		for {
 			buf := make([]byte, 1024)
 			read, err := tty.Read(buf)
 			if err != nil {
-				conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
-				conn.Close()
+				remoteIO.Send(&pb.IOStreamData{Data: []byte(err.Error())})
+				remoteIO.CloseSend()
 				return
 			}
-			conn.WriteMessage(websocket.BinaryMessage, buf[:read])
+			remoteIO.Send(&pb.IOStreamData{Data: buf[:read]})
 		}
 	}()
 
 	for {
-		messageType, reader, err := conn.NextReader()
-		if err != nil {
+		var remoteData *pb.IOStreamData
+		if remoteData, err = remoteIO.Recv(); err != nil {
 			return
 		}
-
-		if messageType == websocket.TextMessage {
-			continue
-		}
-
-		dataTypeBuf := make([]byte, 1)
-		read, err := reader.Read(dataTypeBuf)
-		if err != nil {
-			conn.WriteMessage(websocket.TextMessage, []byte("Unable to read message type from reader"))
+		if remoteData.Data == nil || len(remoteData.Data) == 0 {
 			return
 		}
-
-		if read != 1 {
-			return
-		}
-
-		switch dataTypeBuf[0] {
+		switch remoteData.Data[0] {
 		case 0:
-			io.Copy(tty, reader)
+			tty.Write(remoteData.Data[1:])
 		case 1:
-			decoder := util.Json.NewDecoder(reader)
+			decoder := util.Json.NewDecoder(strings.NewReader(string(remoteData.Data[1:])))
 			var resizeMessage WindowSize
 			err := decoder.Decode(&resizeMessage)
 			if err != nil {

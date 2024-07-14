@@ -50,8 +50,6 @@ func (p *program) run() {
 	}()
 
 	run()
-
-	return
 }
 
 func init() {
