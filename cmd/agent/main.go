@@ -53,7 +53,7 @@ type AgentCliParam struct {
 	Version               bool   // 当前版本号
 	IPReportPeriod        uint32 // 上报IP间隔
 	UseIPv6CountryCode    bool   // 默认优先展示IPv6旗帜
-	ForceChinaMirror      bool   // 强制从Gitee获取更新
+	UseGiteeToUpgrade      bool   // 强制从Gitee获取更新
 }
 
 var (
@@ -153,7 +153,7 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseIPv6CountryCode, "use-ipv6-countrycode", false, "使用IPv6的位置上报")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.ForceChinaMirror, "cn", false, "强制从Gitee获取更新")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseGiteeToUpgrade, "gitee", false, "使用Gitee获取更新")
 	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
 	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 
@@ -432,7 +432,7 @@ func doSelfUpdate(useLocalVersion bool) {
 	println("检查更新：", v)
 	var latest *selfupdate.Release
 	var err error
-	if monitor.CachedCountry != "CN" && !agentCliParam.ForceChinaMirror {
+	if monitor.CachedCountry != "CN" && !agentCliParam.UseGiteeToUpgrade {
 		latest, err = selfupdate.UpdateSelf(v, "nezhahq/agent")
 	} else {
 		latest, err = selfupdate.UpdateSelfGitee(v, "naibahq/agent")
