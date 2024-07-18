@@ -4,7 +4,7 @@
 #include <IOKit/IOKitLib.h>
 #include <CoreFoundation/CoreFoundation.h>
 
-#if (MAC_OS_X_VERSION_MAX_ALLOWED < 101700) // Before macOS 12 Monterey
+#if (defined __MAC_OS_X_VERSION_MIN_REQUIRED) && (__MAC_OS_X_VERSION_MIN_REQUIRED < 120000)
 #define kIOMainPortDefault kIOMasterPortDefault
 #endif
 
