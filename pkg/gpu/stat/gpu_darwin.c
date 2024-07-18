@@ -119,7 +119,7 @@ int find_utilization(char *key, char *dict_key) {
       kIOMainPortDefault, IOServiceMatching(IOSERVICE_GPU), &iterator);
   if (io_reg_err != KERN_SUCCESS) {
     printf("Error getting GPU entry\n");
-    return -1;
+    return 0;
   }
 
   io_object_t service = IOIteratorNext(iterator);
