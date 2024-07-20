@@ -299,12 +299,17 @@ func runService(action string, flags []string) {
 		return
 	}
 
+	winConfig := map[string]interface{}{
+		"OnFailure": "restart",
+	}
+
 	svcConfig := &service.Config{
 		Name:             "nezha-agent",
 		DisplayName:      "Nezha Agent",
 		Description:      "哪吒探针监控端",
 		Arguments:        flags,
 		WorkingDirectory: dir,
+		Option:           winConfig,
 	}
 
 	prg := &program{
