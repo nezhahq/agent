@@ -53,7 +53,17 @@ def sync_to_gitee(tag: str, body: str, files: slice):
         'prerelease': False,
         'target_commitish': 'main'
     }
-    release_api_response = api_client.post(release_api_uri, json=release_data)
+    while True:
+        try:
+            release_api_response = api_client.post(release_api_uri, json=release_data, timeout=30)
+            release_api_response.raise_for_status()
+            break
+        except requests.exceptions.Timeout as errt:
+            print(f"Request timed out: {errt} Retrying in 60 seconds...")
+            time.sleep(60)
+        except requests.exceptions.RequestException as err:
+            print(f"Request failed: {err}")
+            break
     if release_api_response.status_code == 201:
         release_info = release_api_response.json()
         release_id = release_info.get('id')
