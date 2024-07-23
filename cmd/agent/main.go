@@ -38,6 +38,7 @@ import (
 	pb "github.com/nezhahq/agent/proto"
 )
 
+// Agent 运行时参数。如需添加新参数，记得同时在 service.go 中添加
 type AgentCliParam struct {
 	SkipConnectionCount   bool   // 跳过连接数检查
 	SkipProcsCount        bool   // 跳过进程数量检查
@@ -432,7 +433,9 @@ func reportState() {
 
 // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
 func doSelfUpdate(useLocalVersion bool) {
-	<-monitor.Sync
+	if monitor.CachedCountry == "" {
+		return
+	}
 	v := semver.MustParse("0.1.0")
 	if useLocalVersion {
 		v = semver.MustParse(version)
