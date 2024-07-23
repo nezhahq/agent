@@ -86,6 +86,7 @@ func serviceActions(cmd *cobra.Command, args []string) {
 		{agentCliParam.DisableForceUpdate, "--disable-force-update", ""},
 		{agentCliParam.UseIPv6CountryCode, "--use-ipv6-countrycode", ""},
 		{agentConfig.GPU, "--gpu", ""},
+		{agentCliParam.UseGiteeToUpgrade, "--gitee", ""},
 		{agentCliParam.IPReportPeriod != 30*60, "-u", fmt.Sprint(agentCliParam.IPReportPeriod)},
 	}
 
