@@ -49,7 +49,6 @@ var (
 		// "https://freegeoip.app/json/", // 需要 Key
 	}
 	CachedIP, CachedCountry string
-	Sync                    = make(chan bool)
 	httpClientV4            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
 	httpClientV6            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
 )
@@ -75,15 +74,11 @@ func UpdateIP(useIPv6CountryCode bool, period uint32) {
 			CachedIP = fmt.Sprintf("%s/%s", ipv4.IP, ipv6.IP)
 		}
 
-		if ipv4.CountryCode != "" && !useIPv6CountryCode {
+		if ipv4.CountryCode != "" {
 			CachedCountry = ipv4.CountryCode
-		} else if ipv6.CountryCode != "" && useIPv6CountryCode {
-			CachedCountry = ipv6.CountryCode
 		}
-
-		select {
-		case Sync <- true:
-		default:
+		if ipv6.CountryCode != "" && (useIPv6CountryCode || CachedCountry == "") {
+			CachedCountry = ipv6.CountryCode
 		}
 
 		time.Sleep(time.Second * time.Duration(period))
