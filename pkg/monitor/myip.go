@@ -58,16 +58,10 @@ var (
 func UpdateIP(useIPv6CountryCode bool, period uint32) {
 	for {
 		util.Println(agentConfig.Debug, "正在更新本地缓存IP信息")
-		var primaryIP, secondaryIP geoIP
-		if useIPv6CountryCode {
-			primaryIP = fetchGeoIP(geoIPApiList, true)
-			secondaryIP = fetchGeoIP(geoIPApiList, false)
-		} else {
-			primaryIP = fetchGeoIP(geoIPApiList, false)
-			secondaryIP = fetchGeoIP(geoIPApiList, true)
-		}
+		ipv4 := fetchGeoIP(geoIPApiList, false)
+		ipv6 := fetchGeoIP(geoIPApiList, true)
 
-		if primaryIP.IP == "" && secondaryIP.IP == "" {
+		if ipv4.IP == "" && ipv6.IP == "" {
 			if period > 60 {
 				time.Sleep(time.Minute)
 			} else {
@@ -75,16 +69,16 @@ func UpdateIP(useIPv6CountryCode bool, period uint32) {
 			}
 			continue
 		}
-		if primaryIP.IP == "" || secondaryIP.IP == "" {
-			CachedIP = fmt.Sprintf("%s%s", primaryIP.IP, secondaryIP.IP)
+		if ipv4.IP == "" || ipv6.IP == "" {
+			CachedIP = fmt.Sprintf("%s%s", ipv4.IP, ipv6.IP)
 		} else {
-			CachedIP = fmt.Sprintf("%s/%s", primaryIP.IP, secondaryIP.IP)
+			CachedIP = fmt.Sprintf("%s/%s", ipv4.IP, ipv6.IP)
 		}
 
-		if primaryIP.CountryCode != "" {
-			CachedCountry = primaryIP.CountryCode
-		} else if secondaryIP.CountryCode != "" {
-			CachedCountry = secondaryIP.CountryCode
+		if ipv4.CountryCode != "" && !useIPv6CountryCode {
+			CachedCountry = ipv4.CountryCode
+		} else if ipv6.CountryCode != "" && useIPv6CountryCode {
+			CachedCountry = ipv6.CountryCode
 		}
 
 		select {

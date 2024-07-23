@@ -58,9 +58,8 @@ func VersionCheck() bool {
 		}
 
 		return version >= 17763
-	} else {
-		return false
 	}
+	return false
 }
 
 func DownloadDependency() {
@@ -131,10 +130,9 @@ func Start() (Pty, error) {
 	if !isWin10 {
 		tty, err := winpty.OpenDefault(path, shellPath)
 		return &winPTY{tty: tty}, err
-	} else {
-		tty, err := conpty.Start(shellPath, conpty.ConPtyWorkDir(path))
-		return &conPty{tty: tty}, err
 	}
+	tty, err := conpty.Start(shellPath, conpty.ConPtyWorkDir(path))
+	return &conPty{tty: tty}, err
 }
 
 func (w *winPTY) Write(p []byte) (n int, err error) {

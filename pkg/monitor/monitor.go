@@ -83,17 +83,14 @@ func GetHost() *model.Host {
 	} else {
 		if hi.VirtualizationRole == "guest" {
 			cpuType = "Virtual"
+			ret.Virtualization = hi.VirtualizationSystem
 		} else {
 			cpuType = "Physical"
+			ret.Virtualization = ""
 		}
 		ret.Platform = hi.Platform
 		ret.PlatformVersion = hi.PlatformVersion
 		ret.Arch = hi.KernelArch
-		if cpuType == "Physical" {
-			ret.Virtualization = ""
-		} else {
-			ret.Virtualization = hi.VirtualizationSystem
-		}
 		ret.BootTime = hi.BootTime
 	}
 
@@ -218,40 +215,6 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 		}
 	}
 
-	var tcpConnCount, udpConnCount uint64
-	if !skipConnectionCount {
-		ss_err := true
-		if runtime.GOOS == "linux" {
-			tcpStat, err_tcp := goss.ConnectionsWithProtocol(goss.AF_INET, syscall.IPPROTO_TCP)
-			udpStat, err_udp := goss.ConnectionsWithProtocol(goss.AF_INET, syscall.IPPROTO_UDP)
-			if err_tcp == nil && err_udp == nil {
-				ss_err = false
-				tcpConnCount = uint64(len(tcpStat))
-				udpConnCount = uint64(len(udpStat))
-			}
-			if strings.Contains(CachedIP, ":") {
-				tcpStat6, err_tcp := goss.ConnectionsWithProtocol(goss.AF_INET6, syscall.IPPROTO_TCP)
-				udpStat6, err_udp := goss.ConnectionsWithProtocol(goss.AF_INET6, syscall.IPPROTO_UDP)
-				if err_tcp == nil && err_udp == nil {
-					ss_err = false
-					tcpConnCount += uint64(len(tcpStat6))
-					udpConnCount += uint64(len(udpStat6))
-				}
-			}
-		}
-		if ss_err {
-			conns, _ := net.Connections("all")
-			for i := 0; i < len(conns); i++ {
-				switch conns[i].Type {
-				case syscall.SOCK_STREAM:
-					tcpConnCount++
-				case syscall.SOCK_DGRAM:
-					udpConnCount++
-				}
-			}
-		}
-	}
-
 	if agentConfig.Temperature {
 		go updateTemperatureStat()
 		ret.Temperatures = temperatureStat
@@ -265,7 +228,7 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
 	ret.Uptime = uint64(time.Since(cachedBootTime).Seconds())
-	ret.TcpConnCount, ret.UdpConnCount = tcpConnCount, udpConnCount
+	ret.TcpConnCount, ret.UdpConnCount = getConns(skipConnectionCount)
 
 	return &ret
 }
@@ -350,6 +313,42 @@ func getDiskTotalAndUsed() (total uint64, used uint64) {
 	}
 
 	return
+}
+
+func getConns(skipConnectionCount bool) (tcpConnCount, udpConnCount uint64) {
+	if !skipConnectionCount {
+		ss_err := true
+		if runtime.GOOS == "linux" {
+			tcpStat, err_tcp := goss.ConnectionsWithProtocol(goss.AF_INET, syscall.IPPROTO_TCP)
+			udpStat, err_udp := goss.ConnectionsWithProtocol(goss.AF_INET, syscall.IPPROTO_UDP)
+			if err_tcp == nil && err_udp == nil {
+				ss_err = false
+				tcpConnCount = uint64(len(tcpStat))
+				udpConnCount = uint64(len(udpStat))
+			}
+			if strings.Contains(CachedIP, ":") {
+				tcpStat6, err_tcp := goss.ConnectionsWithProtocol(goss.AF_INET6, syscall.IPPROTO_TCP)
+				udpStat6, err_udp := goss.ConnectionsWithProtocol(goss.AF_INET6, syscall.IPPROTO_UDP)
+				if err_tcp == nil && err_udp == nil {
+					ss_err = false
+					tcpConnCount += uint64(len(tcpStat6))
+					udpConnCount += uint64(len(udpStat6))
+				}
+			}
+		}
+		if ss_err {
+			conns, _ := net.Connections("all")
+			for i := 0; i < len(conns); i++ {
+				switch conns[i].Type {
+				case syscall.SOCK_STREAM:
+					tcpConnCount++
+				case syscall.SOCK_DGRAM:
+					udpConnCount++
+				}
+			}
+		}
+	}
+	return tcpConnCount, udpConnCount
 }
 
 func updateGPUStat(gpuStat *uint64) {
