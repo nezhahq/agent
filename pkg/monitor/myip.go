@@ -12,55 +12,25 @@ import (
 
 const MacOSChromeUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
 
-type geoIP struct {
-	CountryCode  string `json:"country_code,omitempty"`
-	CountryCode2 string `json:"countryCode,omitempty"`
-	IP           string `json:"ip,omitempty"`
-	Query        string `json:"query,omitempty"`
-	Location     struct {
-		CountryCode string `json:"country_code,omitempty"`
-	} `json:"location,omitempty"`
-}
-
-func (ip *geoIP) Unmarshal(body []byte) error {
-	if err := util.Json.Unmarshal(body, ip); err != nil {
-		return err
-	}
-	if ip.IP == "" && ip.Query != "" {
-		ip.IP = ip.Query
-	}
-	if ip.CountryCode == "" && ip.CountryCode2 != "" {
-		ip.CountryCode = ip.CountryCode2
-	}
-	if ip.CountryCode == "" && ip.Location.CountryCode != "" {
-		ip.CountryCode = ip.Location.CountryCode
-	}
-	return nil
-}
-
 var (
-	geoIPApiList = []string{
-		"http://api.myip.la/en?json",
-		"https://api.ip.sb/geoip",
-		"https://ipapi.co/json",
-		"http://ip-api.com/json/",
-		// "https://extreme-ip-lookup.com/json/", // 不精确
-		// "https://ip.seeip.org/geoip", // 不精确
-		// "https://freegeoip.app/json/", // 需要 Key
+	cfList = []string{
+		"https://blog.cloudflare.com/cdn-cgi/trace",
+		"https://dash.cloudflare.com/cdn-cgi/trace",
+		"https://cf-ns.com/cdn-cgi/trace", // 有国内节点
 	}
-	CachedIP, CachedCountry string
-	httpClientV4            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
-	httpClientV6            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
+	CachedIP, QueryIP string
+	httpClientV4      = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
+	httpClientV6      = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
 )
 
-// UpdateIP 按设置时间间隔更新IP地址与国家码的缓存
+// UpdateIP 按设置时间间隔更新IP地址的缓存
 func UpdateIP(useIPv6CountryCode bool, period uint32) {
 	for {
 		util.Println(agentConfig.Debug, "正在更新本地缓存IP信息")
-		ipv4 := fetchGeoIP(geoIPApiList, false)
-		ipv6 := fetchGeoIP(geoIPApiList, true)
+		ipv4 := fetchIP(cfList, false)
+		ipv6 := fetchIP(cfList, true)
 
-		if ipv4.IP == "" && ipv6.IP == "" {
+		if ipv4 == "" && ipv6 == "" {
 			if period > 60 {
 				time.Sleep(time.Minute)
 			} else {
@@ -68,25 +38,24 @@ func UpdateIP(useIPv6CountryCode bool, period uint32) {
 			}
 			continue
 		}
-		if ipv4.IP == "" || ipv6.IP == "" {
-			CachedIP = fmt.Sprintf("%s%s", ipv4.IP, ipv6.IP)
+		if ipv4 == "" || ipv6 == "" {
+			CachedIP = fmt.Sprintf("%s%s", ipv4, ipv6)
 		} else {
-			CachedIP = fmt.Sprintf("%s/%s", ipv4.IP, ipv6.IP)
+			CachedIP = fmt.Sprintf("%s/%s", ipv4, ipv6)
 		}
 
-		if ipv4.CountryCode != "" {
-			CachedCountry = ipv4.CountryCode
-		}
-		if ipv6.CountryCode != "" && (useIPv6CountryCode || CachedCountry == "") {
-			CachedCountry = ipv6.CountryCode
+		if !useIPv6CountryCode {
+			QueryIP = ipv4
+		} else {
+			QueryIP = ipv6
 		}
 
 		time.Sleep(time.Second * time.Duration(period))
 	}
 }
 
-func fetchGeoIP(servers []string, isV6 bool) geoIP {
-	var ip geoIP
+func fetchIP(servers []string, isV6 bool) string {
+	var ip string
 	var resp *http.Response
 	var err error
 
@@ -103,20 +72,20 @@ func fetchGeoIP(servers []string, isV6 bool) geoIP {
 				continue
 			}
 			resp.Body.Close()
-			newIP := geoIP{}
-			if err := newIP.Unmarshal(body); err != nil {
-				continue
+			lines := strings.Split(string(body), "\n")
+			var newIP string
+			for _, line := range lines {
+				if strings.HasPrefix(line, "ip=") {
+					newIP = strings.TrimPrefix(line, "ip=")
+					break
+				}
 			}
 			// 没取到 v6 IP
-			if isV6 && !strings.Contains(newIP.IP, ":") {
+			if isV6 && !strings.Contains(newIP, ":") {
 				continue
 			}
 			// 没取到 v4 IP
-			if !isV6 && !strings.Contains(newIP.IP, ".") {
-				continue
-			}
-			// 未获取到国家码
-			if newIP.CountryCode == "" {
+			if !isV6 && !strings.Contains(newIP, ".") {
 				continue
 			}
 			ip = newIP
