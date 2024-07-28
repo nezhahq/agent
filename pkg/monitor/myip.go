@@ -19,7 +19,6 @@ var (
 		"https://cf-ns.com/cdn-cgi/trace", // 有国内节点
 	}
 	CachedIP, GeoQueryIP, CachedCountryCode string
-	GeoQueryIPChanged                       bool
 	httpClientV4                            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
 	httpClientV6                            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
 )
@@ -45,14 +44,11 @@ func UpdateIP(useIPv6CountryCode bool, period uint32) {
 			CachedIP = fmt.Sprintf("%s/%s", ipv4, ipv6)
 		}
 
-		var newIP string
 		if !useIPv6CountryCode {
-			newIP = ipv4
+			GeoQueryIP = ipv4
 		} else {
-			newIP = ipv6
+			GeoQueryIP = ipv6
 		}
-		GeoQueryIPChanged = newIP != GeoQueryIP
-		GeoQueryIP = newIP
 
 		time.Sleep(time.Second * time.Duration(period))
 	}

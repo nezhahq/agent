@@ -427,10 +427,9 @@ func reportState() {
 			if lastReportHostInfo.Before(time.Now().Add(-10 * time.Minute)) {
 				lastReportHostInfo = time.Now()
 				client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
-				if monitor.GeoQueryIPChanged {
+				if monitor.GeoQueryIP != "" {
 					geoip, err := client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.GeoQueryIP})
 					if err == nil {
-						monitor.GeoQueryIPChanged = false
 						monitor.CachedCountryCode = geoip.GetCountryCode()
 					}
 				}
