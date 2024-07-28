@@ -46,6 +46,9 @@ func UpdateIP(useIPv6CountryCode bool, period uint32) {
 
 		if !useIPv6CountryCode {
 			GeoQueryIP = ipv4
+			if GeoQueryIP == "" {
+				GeoQueryIP = ipv6
+			}
 		} else {
 			GeoQueryIP = ipv6
 		}
