@@ -441,9 +441,6 @@ func reportState() {
 
 // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
 func doSelfUpdate(useLocalVersion bool) {
-	if monitor.CachedCountryCode == "" {
-		return
-	}
 	v := semver.MustParse("0.1.0")
 	if useLocalVersion {
 		v = semver.MustParse(version)
