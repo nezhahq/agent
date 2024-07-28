@@ -153,9 +153,6 @@ func GetHost() *model.Host {
 	ret.IP = CachedIP
 	ret.Version = Version
 
-	// stub
-	ret.CountryCode = ""
-
 	return &ret
 }
 
