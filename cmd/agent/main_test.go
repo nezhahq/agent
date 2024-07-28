@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -21,5 +22,13 @@ func Test(t *testing.T) {
 		if !reflect.DeepEqual(c.want, generateQueue(c.start, c.size)) {
 			t.Errorf("generateQueue(%d, %d) == %d, want %d", c.start, c.size, generateQueue(c.start, c.size), c.want)
 		}
+	}
+}
+
+func TestLookupIP(t *testing.T) {
+	ip, err := lookupIP("www.google.com")
+	fmt.Printf("ip: %v, err: %v\n", ip, err)
+	if err != nil {
+		t.Errorf("lookupIP failed: %v", err)
 	}
 }

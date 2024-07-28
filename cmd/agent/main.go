@@ -57,11 +57,11 @@ type AgentCliParam struct {
 }
 
 var (
-	version string
-	arch    string
-	client  pb.NezhaServiceClient
-	inited  bool
-	geoip   *pb.GeoIP
+	version  string
+	arch     string
+	client   pb.NezhaServiceClient
+	inited   bool
+	resolver = &net.Resolver{PreferGo: true}
 )
 
 var agentCmd = &cobra.Command{
@@ -427,7 +427,13 @@ func reportState() {
 			if lastReportHostInfo.Before(time.Now().Add(-10 * time.Minute)) {
 				lastReportHostInfo = time.Now()
 				client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
-				geoip, _ = client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.QueryIP})
+				if monitor.GeoQueryIPChanged {
+					geoip, err := client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.GeoQueryIP})
+					if err == nil {
+						monitor.GeoQueryIPChanged = false
+						monitor.CachedCountryCode = geoip.GetCountryCode()
+					}
+				}
 			}
 		}
 		time.Sleep(time.Second * time.Duration(agentCliParam.ReportDelay))
@@ -436,8 +442,7 @@ func reportState() {
 
 // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
 func doSelfUpdate(useLocalVersion bool) {
-	code := geoip.GetCountryCode()
-	if code == "" {
+	if monitor.CachedCountryCode == "" {
 		return
 	}
 	v := semver.MustParse("0.1.0")
@@ -447,7 +452,7 @@ func doSelfUpdate(useLocalVersion bool) {
 	println("检查更新：", v)
 	var latest *selfupdate.Release
 	var err error
-	if code != "cn" && !agentCliParam.UseGiteeToUpgrade {
+	if monitor.CachedCountryCode != "cn" && !agentCliParam.UseGiteeToUpgrade {
 		latest, err = selfupdate.UpdateSelf(v, "nezhahq/agent")
 	} else {
 		latest, err = selfupdate.UpdateSelfGitee(v, "naibahq/agent")
@@ -470,8 +475,13 @@ func handleUpgradeTask(*pb.Task, *pb.TaskResult) {
 }
 
 func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
+	ipAddr, err := lookupIP(task.GetData())
+	if err != nil {
+		result.Data = err.Error()
+		return
+	}
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", task.GetData(), time.Second*10)
+	conn, err := net.DialTimeout("tcp", ipAddr, time.Second*10)
 	if err == nil {
 		conn.Write([]byte("ping\n"))
 		conn.Close()
@@ -483,7 +493,12 @@ func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
 }
 
 func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
-	pinger, err := ping.NewPinger(task.GetData())
+	ipAddr, err := lookupIP(task.GetData())
+	if err != nil {
+		result.Data = err.Error()
+		return
+	}
+	pinger, err := ping.NewPinger(ipAddr)
 	if err == nil {
 		pinger.SetPrivileged(true)
 		pinger.Count = 5
@@ -787,4 +802,18 @@ func generateQueue(start int, size int) []int {
 		}
 	}
 	return result
+}
+
+func lookupIP(hostOrIp string) (string, error) {
+	if net.ParseIP(hostOrIp) == nil {
+		ips, err := resolver.LookupIPAddr(context.Background(), hostOrIp)
+		if err != nil {
+			return "", err
+		}
+		if len(ips) == 0 {
+			return "", fmt.Errorf("无法解析 %s", hostOrIp)
+		}
+		return ips[0].IP.String(), nil
+	}
+	return hostOrIp, nil
 }
