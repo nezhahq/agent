@@ -61,6 +61,7 @@ var (
 	arch    string
 	client  pb.NezhaServiceClient
 	inited  bool
+	geoip   *pb.GeoIP
 )
 
 var agentCmd = &cobra.Command{
@@ -426,6 +427,7 @@ func reportState() {
 			if lastReportHostInfo.Before(time.Now().Add(-10 * time.Minute)) {
 				lastReportHostInfo = time.Now()
 				client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
+				geoip, _ = client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.QueryIP})
 			}
 		}
 		time.Sleep(time.Second * time.Duration(agentCliParam.ReportDelay))
@@ -434,7 +436,8 @@ func reportState() {
 
 // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
 func doSelfUpdate(useLocalVersion bool) {
-	if monitor.CachedCountry == "" {
+	code := geoip.GetCountryCode()
+	if code == "" {
 		return
 	}
 	v := semver.MustParse("0.1.0")
@@ -444,7 +447,7 @@ func doSelfUpdate(useLocalVersion bool) {
 	println("检查更新：", v)
 	var latest *selfupdate.Release
 	var err error
-	if monitor.CachedCountry != "CN" && !agentCliParam.UseGiteeToUpgrade {
+	if code != "cn" && !agentCliParam.UseGiteeToUpgrade {
 		latest, err = selfupdate.UpdateSelf(v, "nezhahq/agent")
 	} else {
 		latest, err = selfupdate.UpdateSelfGitee(v, "naibahq/agent")
