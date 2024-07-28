@@ -474,13 +474,21 @@ func handleUpgradeTask(*pb.Task, *pb.TaskResult) {
 }
 
 func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
-	ipAddr, err := lookupIP(task.GetData())
+	host, port, err := net.SplitHostPort(task.GetData())
 	if err != nil {
 		result.Data = err.Error()
 		return
 	}
+	ipAddr, err := lookupIP(host)
+	if err != nil {
+		result.Data = err.Error()
+		return
+	}
+	if strings.Contains(ipAddr, ":") {
+		ipAddr = fmt.Sprintf("[%s]", ipAddr)
+	}
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", ipAddr, time.Second*10)
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%s", ipAddr, port), time.Second*10)
 	if err == nil {
 		conn.Write([]byte("ping\n"))
 		conn.Close()
