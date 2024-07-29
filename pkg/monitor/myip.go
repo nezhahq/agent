@@ -45,7 +45,7 @@ func UpdateIP(useIPv6CountryCode bool, period uint32) {
 			CachedIP = fmt.Sprintf("%s/%s", ipv4, ipv6)
 		}
 
-		if ipv6 != "" && useIPv6CountryCode {
+		if ipv6 != "" && (useIPv6CountryCode || ipv4 == "") {
 			GeoQueryIP = ipv6
 		} else {
 			GeoQueryIP = ipv4
