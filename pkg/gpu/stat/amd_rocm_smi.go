@@ -16,7 +16,7 @@ type ROCmSMI struct {
 	BinPath string
 }
 
-func (rsmi *ROCmSMI) Gather() ([]float64, error) {
+func (rsmi *ROCmSMI) Gather() (float64, error) {
 	data := rsmi.pollROCmSMI()
 
 	return gatherROCmSMI(data)
@@ -45,21 +45,21 @@ func (rsmi *ROCmSMI) pollROCmSMI() []byte {
 	return gs
 }
 
-func gatherROCmSMI(ret []byte) ([]float64, error) {
+func gatherROCmSMI(ret []byte) (float64, error) {
 	var gpus map[string]GPU
-	var percentage []float64
+	var gp float64
 
 	err := util.Json.Unmarshal(ret, &gpus)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	for _, gpu := range gpus {
-		gp, _ := strconv.ParseFloat(gpu.GpuUsePercentage, 64)
-		percentage = append(percentage, gp)
+		gp, _ = strconv.ParseFloat(gpu.GpuUsePercentage, 64)
+		break
 	}
 
-	return percentage, nil
+	return gp, nil
 }
 
 type GPU struct {

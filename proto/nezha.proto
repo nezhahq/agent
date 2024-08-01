@@ -45,11 +45,18 @@ message State {
     uint64 process_count = 16;
     repeated State_SensorTemperature temperatures = 17;
     double gpu = 18;
+    repeated State_GPUExtra gpu_extra = 19;
 }
 
 message State_SensorTemperature {
     string name = 1;
     double temperature = 2;
+}
+
+message State_GPUExtra {
+    string name = 1;
+    double temperature = 2;
+    double usage = 3;
 }
 
 message Task {
