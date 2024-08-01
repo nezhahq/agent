@@ -348,7 +348,7 @@ func getGPUModels() []string {
 				return gi
 			}
 		}
-	} else if !agentConfig.GPU && agentConfig.GPUExtra {
+	} else if agentConfig.GPUExtra {
 		if hostDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
 			gix, err := gpustat.GetGPUStatEx()
 			if err != nil {
@@ -386,7 +386,7 @@ func updateGPUStat() float64 {
 }
 
 func updateGPUExStat() []*gpustat.NGPUInfo {
-	if !agentConfig.GPU && agentConfig.GPUExtra {
+	if agentConfig.GPUExtra {
 		if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
 			var gs []*gpustat.NGPUInfo
 			gsx, err := gpustat.GetGPUStatEx()
