@@ -33,6 +33,40 @@ def get_github_latest_release():
         print("No releases found.")
 
 
+def delete_gitee_releases(latest_id, client, uri, token):
+    get_data = {
+        'access_token': token
+    }
+
+    release_info = []
+    release_response = client.get(uri, json=get_data)
+    if release_response.status_code == 200:
+        release_info = release_response.json()
+    else:
+        print(
+            f"Request failed with status code {release_response.status_code}")
+
+    release_ids = []
+    for block in release_info:
+        if 'id' in block:
+            release_ids.append(block['id'])
+
+    print(f'Current release ids: {release_ids}')
+    release_ids.remove(latest_id)
+
+    for id in release_ids:
+        release_uri = f"{uri}/{id}"
+        delete_data = {
+            'access_token': token
+        }
+        delete_response = client.delete(release_uri, json=delete_data)
+        if delete_response.status_code == 204:
+            print(f'Successfully deleted release #{id}.')
+        else:
+            raise ValueError(
+                f"Request failed with status code {delete_response.status_code}")
+
+
 def sync_to_gitee(tag: str, body: str, files: slice):
     release_id = ""
     owner = "naibahq"
@@ -55,7 +89,8 @@ def sync_to_gitee(tag: str, body: str, files: slice):
     }
     while True:
         try:
-            release_api_response = api_client.post(release_api_uri, json=release_data, timeout=30)
+            release_api_response = api_client.post(
+                release_api_uri, json=release_data, timeout=30)
             release_api_response.raise_for_status()
             break
         except requests.exceptions.Timeout as errt:
@@ -89,6 +124,13 @@ def sync_to_gitee(tag: str, body: str, files: slice):
         else:
             print(
                 f"Request failed with status code {asset_api_response.status_code}")
+
+    # 仅保留最新 Release 以防超出 Gitee 仓库配额
+    try:
+        delete_gitee_releases(release_id, api_client,
+                              release_api_uri, access_token)
+    except ValueError as e:
+        print(e)
 
     api_client.close()
     print("Sync is completed!")

@@ -138,7 +138,6 @@ func GetHost() *model.Host {
 	cachedBootTime = time.Unix(int64(hi.BootTime), 0)
 
 	ret.IP = CachedIP
-	ret.CountryCode = strings.ToLower(CachedCountry)
 	ret.Version = Version
 
 	fmt.Println(ret.GPU)
