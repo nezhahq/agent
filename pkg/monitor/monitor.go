@@ -140,7 +140,6 @@ func GetHost() *model.Host {
 	ret.IP = CachedIP
 	ret.Version = Version
 
-	fmt.Println(ret.GPU)
 	return &ret
 }
 
@@ -215,12 +214,6 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 	ret.Uptime = uint64(time.Since(cachedBootTime).Seconds())
 	ret.TcpConnCount, ret.UdpConnCount = getConns(skipConnectionCount)
 
-	fmt.Println(ret.GPU)
-	var readablegpu []gpustat.NGPUInfo
-	for _, gpustat := range ret.GPUExtra {
-		readablegpu = append(readablegpu, *gpustat)
-	}
-	fmt.Println("Data: ", readablegpu)
 	return &ret
 }
 

@@ -31,36 +31,9 @@ func getNvidiaStatEx() ([]*NGPUInfo, error) {
 }
 
 func GetGPUStatEx() ([]*NGPUInfo, error) {
-	/*
-		gs, err := getNvidiaStatEx()
-		if err != nil {
-			return nil, err
-		}
-		if err != nil {
-			return nil, err
-		}
-	*/
-	test1 := &NGPUInfo{
-		Model: "NVIDIA GTX 1080",
-		Stat: struct {
-			Temperature float64
-			Usage       float64
-		}{
-			Temperature: 65.5,
-			Usage:       75.0,
-		},
+	gs, err := getNvidiaStatEx()
+	if err != nil {
+		return nil, err
 	}
-	test2 := &NGPUInfo{
-		Model: "NVIDIA RTX 2080",
-		Stat: struct {
-			Temperature float64
-			Usage       float64
-		}{
-			Temperature: 65.9,
-			Usage:       11.1,
-		},
-	}
-	gstest := []*NGPUInfo{test1, test2}
-	//return gs, nil
-	return gstest, nil
+	return gs, nil
 }

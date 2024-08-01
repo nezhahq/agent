@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -25,9 +26,9 @@ func (smi *NvidiaSMI) Gather() (interface{}, error) {
 
 func (smi *NvidiaSMI) Start() error {
 	if _, err := os.Stat(smi.BinPath); os.IsNotExist(err) {
-		binPath, err := exec.LookPath("nvidia-smi")
+		binPath, err := exec.LookPath(getSuffix())
 		if err != nil {
-			return errors.New("Didn't find the adequate tool to query GPU utilization")
+			return errors.New("didn't find the adequate tool to query GPU utilization")
 		}
 		smi.BinPath = binPath
 	}
@@ -97,6 +98,14 @@ func parseTemperature(temp string) (float64, error) {
 	}
 
 	return value, nil
+}
+
+func getSuffix() string {
+	if runtime.GOOS == "windows" {
+		return "nvidia-smi.exe"
+	}
+
+	return "nvidia-smi"
 }
 
 type nGPU struct {
