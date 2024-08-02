@@ -18,17 +18,24 @@ var (
 		"https://dash.cloudflare.com/cdn-cgi/trace",
 		"https://cf-ns.com/cdn-cgi/trace", // 有国内节点
 	}
+	cnList = []string{
+		"https://cf-ns.com/cdn-cgi/trace", // 有国内节点
+	}
 	CachedIP, GeoQueryIP, CachedCountryCode string
 	httpClientV4                            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
 	httpClientV6                            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
 )
 
 // UpdateIP 按设置时间间隔更新IP地址的缓存
-func UpdateIP(useIPv6CountryCode bool, period uint32) {
+func UpdateIP(useCNIPServers, useIPv6CountryCode bool, period uint32) {
+	servers := cfList
+	if useCNIPServers {
+		servers = cnList
+	}
 	for {
 		util.Println(agentConfig.Debug, "正在更新本地缓存IP信息")
-		ipv4 := fetchIP(cfList, false)
-		ipv6 := fetchIP(cfList, true)
+		ipv4 := fetchIP(servers, false)
+		ipv6 := fetchIP(servers, true)
 
 		if ipv4 == "" && ipv6 == "" {
 			if period > 60 {

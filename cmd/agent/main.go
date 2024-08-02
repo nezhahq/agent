@@ -52,6 +52,7 @@ type AgentCliParam struct {
 	InsecureTLS           bool   // 是否禁用证书检查
 	Version               bool   // 当前版本号
 	IPReportPeriod        uint32 // 上报IP间隔
+	UseCNIPServers        bool   // 使用国内服务器获取IP地址
 	UseIPv6CountryCode    bool   // 默认优先展示IPv6旗帜
 	UseGiteeToUpgrade     bool   // 强制从Gitee获取更新
 }
@@ -151,6 +152,7 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableCommandExecute, "disable-command-execute", false, "禁止在此机器上执行命令")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseCNIPServers, "use-cn-ip-servers", false, "使用国内服务器获取IP地址")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseIPv6CountryCode, "use-ipv6-countrycode", false, "使用IPv6的位置上报")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
@@ -224,7 +226,7 @@ func run() {
 	// 上报服务器信息
 	go reportStateDaemon()
 	// 更新IP信息
-	go monitor.UpdateIP(agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
+	go monitor.UpdateIP(agentCliParam.UseCNIPServers, agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
