@@ -57,11 +57,11 @@ type AgentCliParam struct {
 }
 
 var (
-	version  string
-	arch     string
-	client   pb.NezhaServiceClient
-	inited   bool
-	resolver = &net.Resolver{PreferGo: true}
+	version     string
+	arch        string
+	client      pb.NezhaServiceClient
+	initialized bool
+	resolver    = &net.Resolver{PreferGo: true}
 )
 
 var agentCmd = &cobra.Command{
@@ -222,7 +222,7 @@ func run() {
 		go pty.DownloadDependency()
 	}
 	// 上报服务器信息
-	go reportState()
+	go reportStateDaemon()
 	// 更新IP信息
 	go monitor.UpdateIP(agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
 
@@ -240,7 +240,7 @@ func run() {
 	var conn *grpc.ClientConn
 
 	retry := func() {
-		inited = false
+		initialized = false
 		println("Error to close connection ...")
 		if conn != nil {
 			conn.Close()
@@ -280,7 +280,7 @@ func run() {
 			continue
 		}
 		cancel()
-		inited = true
+		initialized = true
 		// 执行 Task
 		tasks, err := client.RequestTask(context.Background(), monitor.GetHost().PB())
 		if err != nil {
@@ -382,7 +382,7 @@ func doTask(task *pb.Task) {
 	result.Id = task.GetId()
 	result.Type = task.GetType()
 	switch task.GetType() {
-	case model.TaskTypeHTTPGET:
+	case model.TaskTypeHTTPGet:
 		handleHttpGetTask(task, &result)
 	case model.TaskTypeICMPPing:
 		handleIcmpPingTask(task, &result)
@@ -398,6 +398,9 @@ func doTask(task *pb.Task) {
 	case model.TaskTypeNAT:
 		handleNATTask(task)
 		return
+	case model.TaskTypeReportHostInfo:
+		reportState(time.Time{})
+		return
 	case model.TaskTypeKeepalive:
 		return
 	default:
@@ -407,36 +410,41 @@ func doTask(task *pb.Task) {
 	client.ReportTask(context.Background(), &result)
 }
 
-// reportState 向server上报状态信息
-func reportState() {
+// reportStateDaemon 向server上报状态信息
+func reportStateDaemon() {
 	var lastReportHostInfo time.Time
 	var err error
 	defer println("reportState exit", time.Now(), "=>", err)
 	for {
 		// 为了更准确的记录时段流量，inited 后再上传状态信息
-		if client != nil && inited {
-			monitor.TrackNetworkSpeed()
-			timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
-			_, err = client.ReportSystemState(timeOutCtx, monitor.GetState(agentCliParam.SkipConnectionCount, agentCliParam.SkipProcsCount).PB())
-			cancel()
-			if err != nil {
-				println("reportState error", err)
-				time.Sleep(delayWhenError)
-			}
-			// 每10分钟重新获取一次硬件信息
-			if lastReportHostInfo.Before(time.Now().Add(-10 * time.Minute)) {
-				lastReportHostInfo = time.Now()
-				client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
-				if monitor.GeoQueryIP != "" {
-					geoip, err := client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.GeoQueryIP})
-					if err == nil {
-						monitor.CachedCountryCode = geoip.GetCountryCode()
-					}
+		lastReportHostInfo = reportState(lastReportHostInfo)
+		time.Sleep(time.Second * time.Duration(agentCliParam.ReportDelay))
+	}
+}
+
+func reportState(lastReportHostInfo time.Time) time.Time {
+	if client != nil && initialized {
+		monitor.TrackNetworkSpeed()
+		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
+		_, err := client.ReportSystemState(timeOutCtx, monitor.GetState(agentCliParam.SkipConnectionCount, agentCliParam.SkipProcsCount).PB())
+		cancel()
+		if err != nil {
+			println("reportState error", err)
+			time.Sleep(delayWhenError)
+		}
+		// 每10分钟重新获取一次硬件信息
+		if lastReportHostInfo.Before(time.Now().Add(-10 * time.Minute)) {
+			lastReportHostInfo = time.Now()
+			client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
+			if monitor.GeoQueryIP != "" {
+				geoip, err := client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.GeoQueryIP})
+				if err == nil {
+					monitor.CachedCountryCode = geoip.GetCountryCode()
 				}
 			}
 		}
-		time.Sleep(time.Second * time.Duration(agentCliParam.ReportDelay))
 	}
+	return lastReportHostInfo
 }
 
 // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
