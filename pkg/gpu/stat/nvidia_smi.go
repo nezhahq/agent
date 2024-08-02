@@ -8,15 +8,17 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 )
 
 type NvidiaSMI struct {
-	BinPath string
+	BinPath   string
+	ExtraInfo bool
 }
 
-func (smi *NvidiaSMI) Gather() ([]float64, error) {
+func (smi *NvidiaSMI) Gather() (interface{}, error) {
 	data := smi.pollNvidiaSMI()
 
 	return smi.parse(data)
@@ -24,9 +26,9 @@ func (smi *NvidiaSMI) Gather() ([]float64, error) {
 
 func (smi *NvidiaSMI) Start() error {
 	if _, err := os.Stat(smi.BinPath); os.IsNotExist(err) {
-		binPath, err := exec.LookPath("nvidia-smi")
+		binPath, err := exec.LookPath(getSuffix())
 		if err != nil {
-			return errors.New("Didn't find the adequate tool to query GPU utilization")
+			return errors.New("didn't find the adequate tool to query GPU utilization")
 		}
 		smi.BinPath = binPath
 	}
@@ -45,21 +47,31 @@ func (smi *NvidiaSMI) pollNvidiaSMI() []byte {
 	return gs
 }
 
-func (smi *NvidiaSMI) parse(data []byte) ([]float64, error) {
+func (smi *NvidiaSMI) parse(data []byte) (interface{}, error) {
 	var s smistat
-	var percentage []float64
 
 	err := xml.Unmarshal(data, &s)
 	if err != nil {
 		return nil, err
 	}
 
+	gis := []*NGPUInfo{}
+
 	for _, gpu := range s.GPUs {
-		gp, _ := parsePercentage(gpu.Utilization.GpuUtil)
-		percentage = append(percentage, gp)
+		if smi.ExtraInfo {
+			gi := &NGPUInfo{Model: gpu.ProductName}
+			gp, _ := parsePercentage(gpu.Utilization.GpuUtil)
+			gi.Stat.Usage = gp
+			gt, _ := parseTemperature(gpu.Temperature.GpuTemp)
+			gi.Stat.Temperature = gt
+			gis = append(gis, gi)
+		} else {
+			gp, _ := parsePercentage(gpu.Utilization.GpuUtil)
+			return gp, nil
+		}
 	}
 
-	return percentage, nil
+	return gis, nil
 }
 
 func parsePercentage(p string) (float64, error) {
@@ -75,11 +87,44 @@ func parsePercentage(p string) (float64, error) {
 	return value, nil
 }
 
+func parseTemperature(temp string) (float64, error) {
+	per := strings.ReplaceAll(temp, " ", "")
+
+	t := strings.TrimSuffix(per, "C")
+
+	value, err := strconv.ParseFloat(t, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return value, nil
+}
+
+func getSuffix() string {
+	if runtime.GOOS == "windows" {
+		return "nvidia-smi.exe"
+	}
+
+	return "nvidia-smi"
+}
+
 type nGPU struct {
 	Utilization struct {
 		GpuUtil string `xml:"gpu_util"`
 	} `xml:"utilization"`
+	Temperature struct {
+		GpuTemp string `xml:"gpu_temp"`
+	} `xml:"temperature"`
+	ProductName string `xml:"product_name"`
 }
 type smistat struct {
 	GPUs []nGPU `xml:"gpu"`
+}
+
+type NGPUInfo struct {
+	Model string
+	Stat  struct {
+		Temperature float64
+		Usage       float64
+	}
 }

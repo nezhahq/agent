@@ -14,6 +14,7 @@ type AgentConfig struct {
 	GPU                         bool
 	Temperature                 bool
 	Debug                       bool
+	GPUExtra                    bool
 	v                           *viper.Viper
 }
 

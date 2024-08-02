@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/nezhahq/agent/pkg/gpu/stat"
 	pb "github.com/nezhahq/agent/proto"
 )
 
@@ -27,14 +28,24 @@ type HostState struct {
 	ProcessCount   uint64
 	Temperatures   []SensorTemperature
 	GPU            float64
+	GPUExtra       []*stat.NGPUInfo
 }
 
 func (s *HostState) PB() *pb.State {
 	var ts []*pb.State_SensorTemperature
+	var gs []*pb.State_GPUExtra
 	for _, t := range s.Temperatures {
 		ts = append(ts, &pb.State_SensorTemperature{
 			Name:        t.Name,
 			Temperature: t.Temperature,
+		})
+	}
+
+	for _, g := range s.GPUExtra {
+		gs = append(gs, &pb.State_GPUExtra{
+			Name:        g.Model,
+			Temperature: g.Stat.Temperature,
+			Usage:       g.Stat.Usage,
 		})
 	}
 
@@ -56,6 +67,7 @@ func (s *HostState) PB() *pb.State {
 		ProcessCount:   s.ProcessCount,
 		Temperatures:   ts,
 		Gpu:            s.GPU,
+		GpuExtra:       gs,
 	}
 }
 
