@@ -54,6 +54,7 @@ type AgentCliParam struct {
 	IPReportPeriod        uint32 // 上报IP间隔
 	UseIPv6CountryCode    bool   // 默认优先展示IPv6旗帜
 	UseGiteeToUpgrade     bool   // 强制从Gitee获取更新
+	DisableSyslog         bool   // 将日志输出到stderr
 }
 
 var (
@@ -67,11 +68,7 @@ var (
 var agentCmd = &cobra.Command{
 	Use: "agent",
 	Run: func(cmd *cobra.Command, args []string) {
-		if runtime.GOOS == "darwin" {
-			run() // https://github.com/golang/go/issues/59229
-		} else {
-			runService("", nil)
-		}
+		runService("", nil)
 	},
 	PreRun:           preRun,
 	PersistentPreRun: persistPreRun,
@@ -155,8 +152,13 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseGiteeToUpgrade, "gitee", false, "使用Gitee获取更新")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableSyslog, "disable-syslog", false, "将日志输出到stderr")
 	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
 	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
+
+	if runtime.GOOS == "darwin" {
+		agentCliParam.DisableSyslog = true
+	}
 
 	agentConfig.Read(filepath.Dir(ex) + "/config.yml")
 
@@ -324,9 +326,13 @@ func runService(action string, flags []string) {
 	prg.service = s
 
 	errs := make(chan error, 5)
-	util.Logger, err = s.Logger(errs)
-	if err != nil {
-		log.Fatal(err)
+	if !agentCliParam.DisableSyslog {
+		util.Logger, err = s.Logger(errs)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		util.Logger = service.ConsoleLogger
 	}
 
 	go func() {
