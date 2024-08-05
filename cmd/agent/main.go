@@ -156,6 +156,7 @@ func init() {
 	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
 	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
 
+	// https://github.com/golang/go/issues/59229
 	if runtime.GOOS == "darwin" {
 		agentCliParam.DisableSyslog = true
 	}
