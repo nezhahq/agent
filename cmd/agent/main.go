@@ -332,8 +332,6 @@ func runService(action string, flags []string) {
 		if err != nil {
 			log.Fatal(err)
 		}
-	} else {
-		util.Logger = service.ConsoleLogger
 	}
 
 	go func() {

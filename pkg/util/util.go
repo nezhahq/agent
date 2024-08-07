@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	Json   = jsoniter.ConfigCompatibleWithStandardLibrary
-	Logger service.Logger
+	Json                  = jsoniter.ConfigCompatibleWithStandardLibrary
+	Logger service.Logger = service.ConsoleLogger
 )
 
 func IsWindows() bool {
