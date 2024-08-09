@@ -54,7 +54,6 @@ type AgentCliParam struct {
 	IPReportPeriod        uint32 // 上报IP间隔
 	UseIPv6CountryCode    bool   // 默认优先展示IPv6旗帜
 	UseGiteeToUpgrade     bool   // 强制从Gitee获取更新
-	DisableSyslog         bool   // 将日志输出到stderr
 }
 
 var (
@@ -152,14 +151,8 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
 	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseGiteeToUpgrade, "gitee", false, "使用Gitee获取更新")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableSyslog, "disable-syslog", false, "将日志输出到stderr")
 	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
 	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
-
-	// https://github.com/golang/go/issues/59229
-	if runtime.GOOS == "darwin" {
-		agentCliParam.DisableSyslog = true
-	}
 
 	agentConfig.Read(filepath.Dir(ex) + "/config.yml")
 
@@ -322,26 +315,20 @@ func runService(action string, flags []string) {
 	}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
-		log.Fatal("创建服务时出错: ", err)
+		log.Printf("创建服务时出错，以普通模式运行: %v", err)
+		run()
+		return
 	}
 	prg.service = s
 
-	errs := make(chan error, 5)
-	if !agentCliParam.DisableSyslog {
-		util.Logger, err = s.Logger(errs)
+	if agentConfig.Debug {
+		serviceLogger, err := s.Logger(nil)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("获取 service logger 时出错: %+v", err)
+		} else {
+			util.Logger = serviceLogger
 		}
 	}
-
-	go func() {
-		for {
-			err := <-errs
-			if err != nil {
-				log.Print(err)
-			}
-		}
-	}()
 
 	if action == "install" {
 		initName := s.Platform()
