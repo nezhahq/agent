@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nezhahq/agent/pkg/util"
@@ -27,8 +28,18 @@ var (
 func UpdateIP(useIPv6CountryCode bool, period uint32) {
 	for {
 		util.Println(agentConfig.Debug, "正在更新本地缓存IP信息")
-		ipv4 := fetchIP(cfList, false)
-		ipv6 := fetchIP(cfList, true)
+		wg := new(sync.WaitGroup)
+		wg.Add(2)
+		var ipv4, ipv6 string
+		go func() {
+			defer wg.Done()
+			ipv4 = fetchIP(cfList, false)
+		}()
+		go func() {
+			defer wg.Done()
+			ipv6 = fetchIP(cfList, true)
+		}()
+		wg.Wait()
 
 		if ipv4 == "" && ipv6 == "" {
 			if period > 60 {
@@ -66,6 +77,10 @@ func fetchIP(servers []string, isV6 bool) string {
 			resp, err = httpGetWithUA(httpClientV6, servers[i])
 		} else {
 			resp, err = httpGetWithUA(httpClientV4, servers[i])
+		}
+		// 遇到单栈机器提前退出
+		if err != nil && strings.Contains(err.Error(), "no route to host") {
+			return ip
 		}
 		if err == nil {
 			body, err := io.ReadAll(resp.Body)
