@@ -22,13 +22,6 @@ import (
 
 var isWin10 bool
 
-type Pty interface {
-	Write(p []byte) (n int, err error)
-	Read(p []byte) (n int, err error)
-	Setsize(cols, rows uint32) error
-	Close() error
-}
-
 type winPTY struct {
 	tty *winpty.WinPTY
 }
@@ -118,7 +111,7 @@ func getExecutableFilePath() (string, error) {
 	return filepath.Dir(ex), nil
 }
 
-func Start() (Pty, error) {
+func Start() (IPty, error) {
 	shellPath, err := exec.LookPath("powershell.exe")
 	if err != nil || shellPath == "" {
 		shellPath = "cmd.exe"
@@ -143,6 +136,10 @@ func (w *winPTY) Read(p []byte) (n int, err error) {
 	return w.tty.StdOut.Read(p)
 }
 
+func (w *winPTY) Getsize() (uint16, uint16, error) {
+	return 80, 40, nil
+}
+
 func (w *winPTY) Setsize(cols, rows uint32) error {
 	w.tty.SetSize(cols, rows)
 	return nil
@@ -161,6 +158,10 @@ func (c *conPty) Read(p []byte) (n int, err error) {
 	return c.tty.Read(p)
 }
 
+func (c *conPty) Getsize() (uint16, uint16, error) {
+	return 80, 40, nil
+}
+
 func (c *conPty) Setsize(cols, rows uint32) error {
 	c.tty.Resize(int(cols), int(rows))
 	return nil
@@ -172,3 +173,6 @@ func (c *conPty) Close() error {
 	}
 	return nil
 }
+
+var _ IPty = &winPTY{}
+var _ IPty = &conPty{}
