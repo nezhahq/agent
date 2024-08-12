@@ -22,7 +22,7 @@ type Pty struct {
 func DownloadDependency() {
 }
 
-func Start() (*Pty, error) {
+func Start() (IPty, error) {
 	var shellPath string
 	for i := 0; i < len(defaultShells); i++ {
 		shellPath, _ = exec.LookPath(defaultShells[i])
@@ -45,6 +45,14 @@ func (pty *Pty) Write(p []byte) (n int, err error) {
 
 func (pty *Pty) Read(p []byte) (n int, err error) {
 	return pty.tty.Read(p)
+}
+
+func (pty *Pty) Getsize() (uint16, uint16, error) {
+	ws, err := opty.GetsizeFull(pty.tty)
+	if err != nil {
+		return 0, 0, err
+	}
+	return ws.Cols, ws.Rows, nil
 }
 
 func (pty *Pty) Setsize(cols, rows uint32) error {
@@ -71,3 +79,5 @@ func (pty *Pty) Close() error {
 	}
 	return pty.killChildProcess(pty.cmd)
 }
+
+var _ IPty = &Pty{}
