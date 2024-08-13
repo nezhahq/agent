@@ -26,7 +26,6 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/spf13/cobra"
-	"github.com/trzsz/trzsz-go/trzsz"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -700,31 +699,10 @@ func handleTerminalTask(task *pb.Task) {
 	}()
 	println("terminal init", terminal.StreamID)
 
-	clientIn, stdinPipe := io.Pipe()
-	defer stdinPipe.Close()
-	stdoutPipe, clientOut := io.Pipe()
-	defer stdinPipe.Close()
-	defer clientOut.Close()
-	ttyForFilter, ttyForFilterWriter := io.Pipe()
-	defer ttyForFilterWriter.Close()
-
-	go func() {
-		io.Copy(ttyForFilterWriter, tty)
-		stdoutPipe.Close()
-	}()
-
-	width, _, err := tty.Getsize()
-	if err != nil {
-		println("Terminal tty.Getsize失败：", err)
-	}
-
-	trzszFilter := trzsz.NewTrzszFilter(clientIn, clientOut, tty, ttyForFilter, trzsz.TrzszOptions{TerminalColumns: int32(width), EnableZmodem: true})
-	defer trzszFilter.StopTransferringFiles(true)
-
 	go func() {
 		for {
 			buf := make([]byte, 10240)
-			read, err := stdoutPipe.Read(buf)
+			read, err := tty.Read(buf)
 			if err != nil {
 				remoteIO.Send(&pb.IOStreamData{Data: []byte(err.Error())})
 				remoteIO.CloseSend()
@@ -744,7 +722,7 @@ func handleTerminalTask(task *pb.Task) {
 		}
 		switch remoteData.Data[0] {
 		case 0:
-			stdinPipe.Write(remoteData.Data[1:])
+			tty.Write(remoteData.Data[1:])
 		case 1:
 			decoder := util.Json.NewDecoder(strings.NewReader(string(remoteData.Data[1:])))
 			var resizeMessage WindowSize
@@ -752,7 +730,6 @@ func handleTerminalTask(task *pb.Task) {
 			if err != nil {
 				continue
 			}
-			trzszFilter.SetTerminalColumns(int32(resizeMessage.Cols))
 			tty.Setsize(resizeMessage.Cols, resizeMessage.Rows)
 		}
 	}
