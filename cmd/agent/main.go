@@ -701,12 +701,25 @@ func handleTerminalTask(task *pb.Task) {
 	println("terminal init", terminal.StreamID)
 
 	clientIn, stdinPipe := io.Pipe()
+	defer stdinPipe.Close()
 	stdoutPipe, clientOut := io.Pipe()
+	defer stdinPipe.Close()
+	defer clientOut.Close()
+	ttyForFilter, ttyForFilterWriter := io.Pipe()
+	defer ttyForFilterWriter.Close()
+
+	go func() {
+		io.Copy(ttyForFilterWriter, tty)
+		stdoutPipe.Close()
+	}()
+
 	width, _, err := tty.Getsize()
 	if err != nil {
 		println("Terminal tty.Getsize失败：", err)
 	}
-	trzszFilter := trzsz.NewTrzszFilter(clientIn, clientOut, tty, tty, trzsz.TrzszOptions{TerminalColumns: int32(width), EnableZmodem: true})
+
+	trzszFilter := trzsz.NewTrzszFilter(clientIn, clientOut, tty, ttyForFilter, trzsz.TrzszOptions{TerminalColumns: int32(width), EnableZmodem: true})
+	defer trzszFilter.StopTransferringFiles(true)
 
 	go func() {
 		for {
