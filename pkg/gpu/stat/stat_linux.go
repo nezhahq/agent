@@ -2,32 +2,33 @@
 
 package stat
 
-func getNvidiaStat() ([]float64, error) {
+func getNvidiaStat() (float64, error) {
 	smi := &NvidiaSMI{
-		BinPath: "/usr/bin/nvidia-smi",
+		BinPath:   "/usr/bin/nvidia-smi",
+		ExtraInfo: false,
 	}
-	err1 := smi.Start()
-	if err1 != nil {
-		return nil, err1
+	err := smi.Start()
+	if err != nil {
+		return 0, err
 	}
-	data, err2 := smi.Gather()
-	if err2 != nil {
-		return nil, err2
+	data, err := smi.Gather()
+	if err != nil {
+		return 0, err
 	}
-	return data, nil
+	return data.(float64), nil
 }
 
-func getAMDStat() ([]float64, error) {
+func getAMDStat() (float64, error) {
 	rsmi := &ROCmSMI{
 		BinPath: "/opt/rocm/bin/rocm-smi",
 	}
 	err1 := rsmi.Start()
 	if err1 != nil {
-		return nil, err1
+		return 0, err1
 	}
 	data, err2 := rsmi.Gather()
 	if err2 != nil {
-		return nil, err2
+		return 0, err2
 	}
 	return data, nil
 }
@@ -37,8 +38,8 @@ func GetGPUStat() (float64, error) {
 	if err != nil {
 		gs, err = getAMDStat()
 	}
-	if err != nil || len(gs) == 0 {
+	if err != nil {
 		return 0, err
 	}
-	return gs[0], nil
+	return gs, nil
 }

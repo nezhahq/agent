@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"fmt"
-	"math"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -42,7 +41,6 @@ var (
 var (
 	netInSpeed, netOutSpeed, netInTransfer, netOutTransfer, lastUpdateNetStats uint64
 	cachedBootTime                                                             time.Time
-	gpuStat                                                                    uint64
 	temperatureStat                                                            []model.SensorTemperature
 )
 
@@ -64,7 +62,6 @@ var statDataFetchAttempts = map[string]int{
 }
 
 var (
-	updateGPUStatus  int32
 	updateTempStatus int32
 )
 
@@ -115,17 +112,7 @@ func GetHost() *model.Host {
 		}
 	}
 
-	if agentConfig.GPU {
-		if hostDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
-			ret.GPU, err = gpu.GetGPUModel()
-			if err != nil {
-				hostDataFetchAttempts["GPU"]++
-				println("gpu.GetGPUModel error: ", err, ", attempt: ", hostDataFetchAttempts["GPU"])
-			} else {
-				hostDataFetchAttempts["GPU"] = 0
-			}
-		}
-	}
+	ret.GPU = getGPUModels()
 
 	ret.DiskTotal, _ = getDiskTotalAndUsed()
 
@@ -219,10 +206,8 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 		ret.Temperatures = temperatureStat
 	}
 
-	if agentConfig.GPU {
-		go updateGPUStat(&gpuStat)
-		ret.GPU = math.Float64frombits(gpuStat)
-	}
+	ret.GPU = updateGPUStat()
+	ret.GPUExtra = updateGPUExStat()
 
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
@@ -350,23 +335,76 @@ func getConns(skipConnectionCount bool) (tcpConnCount, udpConnCount uint64) {
 	return tcpConnCount, udpConnCount
 }
 
-func updateGPUStat(gpuStat *uint64) {
-	if !atomic.CompareAndSwapInt32(&updateGPUStatus, 0, 1) {
-		return
-	}
-	defer atomic.StoreInt32(&updateGPUStatus, 0)
-
-	if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
-		gs, err := gpustat.GetGPUStat()
-		if err != nil {
-			statDataFetchAttempts["GPU"]++
-			println("gpustat.GetGPUStat error: ", err, ", attempt: ", statDataFetchAttempts["GPU"])
-			atomicStoreFloat64(gpuStat, gs)
-		} else {
-			statDataFetchAttempts["GPU"] = 0
-			atomicStoreFloat64(gpuStat, gs)
+func getGPUModels() []string {
+	if agentConfig.GPU && !agentConfig.GPUExtra {
+		if hostDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
+			gi, err := gpu.GetGPUModel()
+			if err != nil {
+				hostDataFetchAttempts["GPU"]++
+				println("gpu.GetGPUModel error: ", err, ", attempt: ", hostDataFetchAttempts["GPU"])
+				return nil
+			} else {
+				hostDataFetchAttempts["GPU"] = 0
+				return gi
+			}
+		}
+	} else if agentConfig.GPUExtra {
+		if hostDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
+			gix, err := gpustat.GetGPUStatEx()
+			if err != nil {
+				hostDataFetchAttempts["GPU"]++
+				println("gpustat.GetGPUStatEx error: ", err, ", attempt: ", hostDataFetchAttempts["GPU"])
+				return nil
+			} else {
+				hostDataFetchAttempts["GPU"] = 0
+				var gi []string
+				for _, val := range gix {
+					gi = append(gi, val.Model)
+				}
+				return gi
+			}
 		}
 	}
+	return nil
+}
+
+func updateGPUStat() float64 {
+	if agentConfig.GPU && !agentConfig.GPUExtra {
+		if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
+			gs, err := gpustat.GetGPUStat()
+			if err != nil {
+				statDataFetchAttempts["GPU"]++
+				println("gpustat.GetGPUStat error: ", err, ", attempt: ", statDataFetchAttempts["GPU"])
+				return 0
+			} else {
+				statDataFetchAttempts["GPU"] = 0
+				return gs
+			}
+		}
+	}
+	return 0
+}
+
+func updateGPUExStat() []*gpustat.NGPUInfo {
+	if agentConfig.GPUExtra {
+		if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
+			var gs []*gpustat.NGPUInfo
+			gsx, err := gpustat.GetGPUStatEx()
+			if err != nil {
+				statDataFetchAttempts["GPU"]++
+				println("gpustat.GetGPUStatEx error: ", err, ", attempt: ", statDataFetchAttempts["GPU"])
+				return nil
+			} else {
+				statDataFetchAttempts["GPU"] = 0
+				for _, g := range gsx {
+					g.Model = ""
+					gs = append(gs, g)
+				}
+				return gs
+			}
+		}
+	}
+	return nil
 }
 
 func updateTemperatureStat() {
@@ -404,10 +442,6 @@ func isListContainsStr(list []string, str string) bool {
 		}
 	}
 	return false
-}
-
-func atomicStoreFloat64(x *uint64, v float64) {
-	atomic.StoreUint64(x, math.Float64bits(v))
 }
 
 func println(v ...interface{}) {
