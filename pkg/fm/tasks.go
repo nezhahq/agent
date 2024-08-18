@@ -97,7 +97,7 @@ func (t *Task) download() {
 		return
 	}
 
-	buffer := make([]byte, 65536)
+	buffer := make([]byte, 1048576)
 	for {
 		n, err := file.Read(buffer)
 		if err != nil {
