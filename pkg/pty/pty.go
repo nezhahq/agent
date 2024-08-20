@@ -19,7 +19,8 @@ type Pty struct {
 	cmd *exec.Cmd
 }
 
-func DownloadDependency() {
+func DownloadDependency() error {
+	return nil
 }
 
 func Start() (IPty, error) {
