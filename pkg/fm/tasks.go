@@ -69,7 +69,7 @@ func (t *Task) download() {
 	path := string(t.remoteData.Data[1:])
 	file, err := os.Open(path)
 	if err != nil {
-		println("Error opening file: ", err)
+		t.printf("Error opening file: %s", err)
 		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
 		return
 	}
@@ -77,7 +77,7 @@ func (t *Task) download() {
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		println("Error getting file info: ", err)
+		t.printf("Error getting file info: %s", err)
 		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
 		return
 	}
@@ -92,7 +92,7 @@ func (t *Task) download() {
 	var header bytes.Buffer
 	headerData := CreateFile(&header, uint64(fileSize))
 	if err := t.taskClient.Send(&pb.IOStreamData{Data: headerData}); err != nil {
-		println("Error sending file header: ", err)
+		t.printf("Error sending file header: %s", err)
 		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
 		return
 	}
@@ -104,13 +104,13 @@ func (t *Task) download() {
 			if err == io.EOF {
 				return
 			}
-			println("Error reading file: ", err)
+			t.printf("Error reading file: %s", err)
 			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
 			return
 		}
 
 		if err := t.taskClient.Send(&pb.IOStreamData{Data: buffer[:n]}); err != nil {
-			println("Error sending file chunk: ", err)
+			t.printf("Error sending file chunk: %s", err)
 			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
 			return
 		}
@@ -119,7 +119,9 @@ func (t *Task) download() {
 
 func (t *Task) upload() {
 	if len(t.remoteData.Data) < 9 {
-		println("data is invalid")
+		const err string = "data is invalid"
+		t.printf(err)
+		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(errors.New(err))})
 		return
 	}
 
@@ -128,7 +130,7 @@ func (t *Task) upload() {
 
 	file, err := os.Create(path)
 	if err != nil {
-		println("Error creating file: ", err)
+		t.printf("Error creating file: %s", err)
 		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
 		return
 	}
@@ -139,14 +141,14 @@ func (t *Task) upload() {
 	t.printf("receiving file: %s, size: %d", file.Name(), fileSize)
 	for totalReceived < fileSize {
 		if t.remoteData, err = t.taskClient.Recv(); err != nil {
-			println("Error receiving data: ", err)
+			t.printf("Error receiving data: %s", err)
 			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
 			return
 		}
 
 		bytesWritten, err := file.Write(t.remoteData.Data)
 		if err != nil {
-			println("Error writing to file: ", err)
+			t.printf("Error writing to file: %s", err)
 			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
 			return
 		}
