@@ -14,7 +14,8 @@ type Pty struct {
 	tty *conpty.ConPty
 }
 
-func DownloadDependency() {
+func DownloadDependency() error {
+	return nil
 }
 
 func getExecutableFilePath() (string, error) {
