@@ -26,7 +26,7 @@ func (rsmi *ROCmSMI) Start() error {
 	if _, err := os.Stat(rsmi.BinPath); os.IsNotExist(err) {
 		binPath, err := exec.LookPath("rocm-smi")
 		if err != nil {
-			return errors.New("Didn't find the adequate tool to query GPU utilization")
+			return errors.New("didn't find the adequate tool to query GPU utilization")
 		}
 		rsmi.BinPath = binPath
 	}
