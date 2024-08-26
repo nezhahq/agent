@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"fmt"
-	"math"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -42,7 +41,6 @@ var (
 var (
 	netInSpeed, netOutSpeed, netInTransfer, netOutTransfer, lastUpdateNetStats uint64
 	cachedBootTime                                                             time.Time
-	gpuStat                                                                    uint64
 	temperatureStat                                                            []model.SensorTemperature
 )
 
@@ -64,7 +62,6 @@ var statDataFetchAttempts = map[string]int{
 }
 
 var (
-	updateGPUStatus  int32
 	updateTempStatus int32
 )
 
@@ -219,10 +216,7 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 		ret.Temperatures = temperatureStat
 	}
 
-	if agentConfig.GPU {
-		go updateGPUStat(&gpuStat)
-		ret.GPU = math.Float64frombits(gpuStat)
-	}
+	ret.GPU = updateGPUStat()
 
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
@@ -350,23 +344,21 @@ func getConns(skipConnectionCount bool) (tcpConnCount, udpConnCount uint64) {
 	return tcpConnCount, udpConnCount
 }
 
-func updateGPUStat(gpuStat *uint64) {
-	if !atomic.CompareAndSwapInt32(&updateGPUStatus, 0, 1) {
-		return
-	}
-	defer atomic.StoreInt32(&updateGPUStatus, 0)
-
-	if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
-		gs, err := gpustat.GetGPUStat()
-		if err != nil {
-			statDataFetchAttempts["GPU"]++
-			printf("gpustat.GetGPUStat error: %v, attempt: %d", err, statDataFetchAttempts["GPU"])
-			atomicStoreFloat64(gpuStat, gs)
-		} else {
-			statDataFetchAttempts["GPU"] = 0
-			atomicStoreFloat64(gpuStat, gs)
+func updateGPUStat() float64 {
+	if agentConfig.GPU {
+		if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
+			gs, err := gpustat.GetGPUStat()
+			if err != nil {
+				statDataFetchAttempts["GPU"]++
+				println("gpustat.GetGPUStat error: ", err, ", attempt: ", statDataFetchAttempts["GPU"])
+				return 0
+			} else {
+				statDataFetchAttempts["GPU"] = 0
+				return gs
+			}
 		}
 	}
+	return 0
 }
 
 func updateTemperatureStat() {
@@ -404,10 +396,6 @@ func isListContainsStr(list []string, str string) bool {
 		}
 	}
 	return false
-}
-
-func atomicStoreFloat64(x *uint64, v float64) {
-	atomic.StoreUint64(x, math.Float64bits(v))
 }
 
 func printf(format string, v ...interface{}) {
