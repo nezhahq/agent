@@ -10,7 +10,7 @@ import (
 	utlsx "github.com/nezhahq/agent/pkg/utls"
 )
 
-const url = "https://www.lexusofpembrokepines.com/wp-content/cache/jellyfish-cache/new-vehicles-js.js?mt=1698335265"
+const url = "https://www.patreon.com/login"
 
 func TestCloudflareDetection(t *testing.T) {
 	client := http.DefaultClient
