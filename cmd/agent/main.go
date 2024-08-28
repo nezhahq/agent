@@ -121,9 +121,11 @@ func init() {
 		return nil, err
 	}
 
+	headers := util.BrowserHeaders()
 	http.DefaultClient.Timeout = time.Second * 30
 	httpClient.Transport = utlsx.NewUTLSHTTPRoundTripperWithProxy(
-		utls.HelloChrome_Auto, new(utls.Config), http.DefaultTransport, true, nil,
+		utls.HelloChrome_Auto, new(utls.Config),
+		http.DefaultTransport, nil, headers,
 	)
 
 	ex, err := os.Executable()

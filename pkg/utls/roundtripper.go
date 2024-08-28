@@ -20,8 +20,6 @@ import (
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/proxy"
-
-	"github.com/nezhahq/agent/pkg/monitor"
 )
 
 // NewUTLSHTTPRoundTripperWithProxy creates an instance of RoundTripper that dial to remote HTTPS endpoint with
@@ -29,19 +27,18 @@ import (
 // clientHelloID is the clientHello that uTLS attempts to imitate
 // uTlsConfig is the TLS Configuration template
 // backdropTransport is the transport that will be used for non-https traffic
-// removeSNI indicates not to send Server Name Indication Extension
 // returns a RoundTripper: its behaviour is documented at
 // https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake/-/merge_requests/76#note_2777161
 func NewUTLSHTTPRoundTripperWithProxy(clientHelloID utls.ClientHelloID, uTlsConfig *utls.Config,
-	backdropTransport http.RoundTripper, removeSNI bool, proxy *url.URL) http.RoundTripper {
+	backdropTransport http.RoundTripper, proxy *url.URL, header *http.Header) http.RoundTripper {
 	rtImpl := &uTLSHTTPRoundTripperImpl{
 		clientHelloID:     clientHelloID,
 		config:            uTlsConfig,
 		connectWithH1:     map[string]bool{},
 		backdropTransport: backdropTransport,
 		pendingConn:       map[pendingConnKey]*unclaimedConnection{},
-		removeSNI:         removeSNI,
 		proxyAddr:         proxy,
+		headers:           header,
 	}
 	rtImpl.init()
 	return rtImpl
@@ -61,8 +58,9 @@ type uTLSHTTPRoundTripperImpl struct {
 	accessDialingConnection sync.Mutex
 	pendingConn             map[pendingConnKey]*unclaimedConnection
 
-	removeSNI bool
 	proxyAddr *url.URL
+
+	headers *http.Header
 }
 
 type pendingConnKey struct {
@@ -77,7 +75,7 @@ var (
 )
 
 func (r *uTLSHTTPRoundTripperImpl) RoundTrip(req *http.Request) (*http.Response, error) {
-	addBrowserHeaders(req)
+	req.Header = *r.headers
 
 	if req.URL.Scheme != "https" {
 		return r.backdropTransport.RoundTrip(req)
@@ -210,7 +208,7 @@ func (r *uTLSHTTPRoundTripperImpl) dialTLS(ctx context.Context, addr string) (*u
 		return nil, err
 	}
 	uconn := utls.UClient(conn, config, r.clientHelloID)
-	if (net.ParseIP(config.ServerName) != nil) || r.removeSNI {
+	if net.ParseIP(config.ServerName) != nil {
 		err := uconn.RemoveSNIExtension()
 		if err != nil {
 			uconn.Close()
@@ -275,10 +273,4 @@ func (c *unclaimedConnection) tick() {
 		c.Conn.Close()
 		c.Conn = nil
 	}
-}
-
-func addBrowserHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", monitor.MacOSChromeUA)
-	req.Header.Set("Accept-Language", "en,zh-CN;q=0.9,zh;q=0.8")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 }
