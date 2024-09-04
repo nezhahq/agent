@@ -30,6 +30,7 @@ var (
 	pdhCollectQueryData          = modPdh.NewProc("PdhCollectQueryData")
 	pdhGetFormattedCounterArrayW = modPdh.NewProc("PdhGetFormattedCounterArrayW")
 	pdhAddEnglishCounterW        = modPdh.NewProc("PdhAddEnglishCounterW")
+	pdhCloseQuery                = modPdh.NewProc("PdhCloseQuery")
 )
 
 type PDH_FMT_COUNTERVALUE_DOUBLE struct {
@@ -131,7 +132,9 @@ func GetGPUStat() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	values, err := getValue(1024, counter)
+	defer pdhCloseQuery.Call(uintptr(counter.Query))
+
+	values, err := getValue(8192, counter)
 	if err != nil {
 		return 0, err
 	}
