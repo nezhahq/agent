@@ -7,6 +7,8 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego"
+
+	"github.com/nezhahq/agent/pkg/util"
 )
 
 type (
@@ -34,6 +36,9 @@ type (
 	CFStringGetCStringFunc        = func(cfStr uintptr, buffer *byte, size CFIndex, encoding CFStringEncoding) bool
 	CFDictionaryGetTypeIDFunc     = func() CFTypeID
 	CFDictionaryGetValueFunc      = func(dict, key uintptr) unsafe.Pointer
+	CFDataGetTypeIDFunc           = func() CFTypeID
+	CFDataGetBytePtrFunc          = func(theData uintptr) unsafe.Pointer
+	CFDataGetLengthFunc           = func(theData uintptr) CFIndex
 	CFNumberGetValueFunc          = func(number uintptr, theType CFNumberType, valuePtr uintptr) bool
 	CFReleaseFunc                 = func(cf uintptr)
 
@@ -74,6 +79,9 @@ var (
 	CFStringGetCString        CFStringGetCStringFunc
 	CFDictionaryGetTypeID     CFDictionaryGetTypeIDFunc
 	CFDictionaryGetValue      CFDictionaryGetValueFunc
+	CFDataGetTypeID           CFDataGetTypeIDFunc
+	CFDataGetBytePtr          CFDataGetBytePtrFunc
+	CFDataGetLength           CFDataGetLengthFunc
 	CFNumberGetValue          CFNumberGetValueFunc
 	CFRelease                 CFReleaseFunc
 
@@ -84,6 +92,10 @@ var (
 	IOObjectRelease                 IOObjectReleaseFunc
 )
 
+var validVendors = []string{
+	"AMD", "Intel", "NVIDIA", "Apple",
+}
+
 func init() {
 	purego.RegisterLibFunc(&CFStringCreateWithCString, coreFoundation, "CFStringCreateWithCString")
 	purego.RegisterLibFunc(&CFGetTypeID, coreFoundation, "CFGetTypeID")
@@ -92,6 +104,9 @@ func init() {
 	purego.RegisterLibFunc(&CFStringGetCString, coreFoundation, "CFStringGetCString")
 	purego.RegisterLibFunc(&CFDictionaryGetTypeID, coreFoundation, "CFDictionaryGetTypeID")
 	purego.RegisterLibFunc(&CFDictionaryGetValue, coreFoundation, "CFDictionaryGetValue")
+	purego.RegisterLibFunc(&CFDataGetTypeID, coreFoundation, "CFDataGetTypeID")
+	purego.RegisterLibFunc(&CFDataGetBytePtr, coreFoundation, "CFDataGetBytePtr")
+	purego.RegisterLibFunc(&CFDataGetLength, coreFoundation, "CFDataGetLength")
 	purego.RegisterLibFunc(&CFNumberGetValue, coreFoundation, "CFNumberGetValue")
 	purego.RegisterLibFunc(&CFRelease, coreFoundation, "CFRelease")
 
@@ -103,7 +118,11 @@ func init() {
 }
 
 func GetGPUModel() ([]string, error) {
-	return findDevices("model")
+	models, err := findDevices("model")
+	if err != nil {
+		return nil, err
+	}
+	return util.RemoveDuplicate(models), nil
 }
 
 func FindUtilization(key, dictKey string) (int, error) {
@@ -113,6 +132,7 @@ func FindUtilization(key, dictKey string) (int, error) {
 func findDevices(key string) ([]string, error) {
 	var iterator ioIterator
 	var results []string
+	done := false
 
 	iv := IOServiceGetMatchingServices(kIOMainPortDefault, uintptr(IOServiceMatching(IOSERVICE_GPU)), &iterator)
 	if iv != KERN_SUCCESS {
@@ -132,15 +152,18 @@ func findDevices(key string) ([]string, error) {
 		result, _, _ := findProperties(service, uintptr(cfStr), 0)
 		IOObjectRelease(service)
 
-		if result != nil {
-			results = append(results, string(result))
+		resultStr := string(result)
+
+		if util.ContainsStr(validVendors, resultStr) {
+			results = append(results, resultStr)
 			index++
-		} else if key == "model" {
+		} else if key == "model" && !done {
 			IOObjectRelease(iterator)
 			iv = IOServiceGetMatchingServices(kIOMainPortDefault, uintptr(IOServiceMatching(IOSERVICE_PCI)), &iterator)
 			if iv != KERN_SUCCESS {
 				return nil, fmt.Errorf("error retrieving GPU entry")
 			}
+			done = true
 		}
 	}
 
@@ -150,17 +173,22 @@ func findDevices(key string) ([]string, error) {
 
 func findUtilization(key, dictKey string) (int, error) {
 	var iterator ioIterator
-	var result int
 	var err error
+	result := 0
 
 	iv := IOServiceGetMatchingServices(kIOMainPortDefault, uintptr(IOServiceMatching(IOSERVICE_GPU)), &iterator)
 	if iv != KERN_SUCCESS {
 		return 0, fmt.Errorf("error retrieving GPU entry")
 	}
 
-	// Only retrieving the utilization of first GPU here
-	service := IOIteratorNext(iterator)
-	if service != MACH_PORT_NULL {
+	// Only retrieving the utilization of a single GPU here
+	var service ioObject
+	for {
+		service = IOIteratorNext(iterator)
+		if service == MACH_PORT_NULL {
+			break
+		}
+
 		cfStr := CFStringCreateWithCString(kCFAllocatorDefault, key, CFStringEncoding(kCFStringEncodingUTF8))
 		cfDictStr := CFStringCreateWithCString(kCFAllocatorDefault, dictKey, CFStringEncoding(kCFStringEncodingUTF8))
 
@@ -170,17 +198,17 @@ func findUtilization(key, dictKey string) (int, error) {
 		CFRelease(uintptr(cfDictStr))
 
 		if err != nil {
-			return 0, fmt.Errorf("failed retrieving GPU utilization: %v", err)
+			IOObjectRelease(service)
+			continue
+		} else if result != 0 {
+			break
 		}
-	} else {
-		IOObjectRelease(service)
-		IOObjectRelease(iterator)
-		return 0, fmt.Errorf("no GPU utilization entry found")
 	}
 
 	IOObjectRelease(service)
 	IOObjectRelease(iterator)
-	return result, nil
+
+	return result, err
 }
 
 func findProperties(service ioRegistryEntry, key, dictKey uintptr) ([]byte, int, error) {
@@ -195,6 +223,11 @@ func findProperties(service ioRegistryEntry, key, dictKey uintptr) ([]byte, int,
 			CFStringGetCString(ptrValue, &buf[0], length, uint32(kCFStringEncodingUTF8))
 			CFRelease(ptrValue)
 			return buf, 0, nil
+		case CFDataGetTypeID():
+			length := CFDataGetLength(ptrValue)
+			bin := unsafe.Slice((*byte)(CFDataGetBytePtr(ptrValue)), length)
+			CFRelease(ptrValue)
+			return bin, 0, nil
 		// PerformanceStatistics
 		case CFDictionaryGetTypeID():
 			cfValue := CFDictionaryGetValue(ptrValue, dictKey)
