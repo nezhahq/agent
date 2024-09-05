@@ -30,6 +30,7 @@ type (
 	CFStringCreateWithCStringFunc = func(alloc uintptr, cStr string, encoding CFStringEncoding) CFStringRef
 	CFGetTypeIDFunc               = func(cf uintptr) CFTypeID
 	CFStringGetTypeIDFunc         = func() CFTypeID
+	CFStringGetLengthFunc         = func(theString uintptr) int32
 	CFStringGetCStringFunc        = func(cfStr uintptr, buffer *byte, size CFIndex, encoding CFStringEncoding) bool
 	CFDictionaryGetTypeIDFunc     = func() CFTypeID
 	CFDictionaryGetValueFunc      = func(dict, key uintptr) unsafe.Pointer
@@ -63,27 +64,13 @@ var (
 var (
 	coreFoundation, _ = purego.Dlopen("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", purego.RTLD_LAZY|purego.RTLD_GLOBAL)
 	ioKit, _          = purego.Dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", purego.RTLD_LAZY|purego.RTLD_GLOBAL)
-
-	cfStringCreateWithCString, _ = purego.Dlsym(coreFoundation, "CFStringCreateWithCString")
-	cfGetTypeID, _               = purego.Dlsym(coreFoundation, "CFGetTypeID")
-	cfStringGetTypeID, _         = purego.Dlsym(coreFoundation, "CFStringGetTypeID")
-	cfStringGetCString, _        = purego.Dlsym(coreFoundation, "CFStringGetCString")
-	cfDictionaryGetTypeID, _     = purego.Dlsym(coreFoundation, "CFDictionaryGetTypeID")
-	cfDictionaryGetValue, _      = purego.Dlsym(coreFoundation, "CFDictionaryGetValue")
-	cfNumberGetValue, _          = purego.Dlsym(coreFoundation, "CFNumberGetValue")
-	cfRelease, _                 = purego.Dlsym(coreFoundation, "CFRelease")
-
-	ioServiceGetMatchingServices, _    = purego.Dlsym(ioKit, "IOServiceGetMatchingServices")
-	ioIteratorNext, _                  = purego.Dlsym(ioKit, "IOIteratorNext")
-	ioServiceMatching, _               = purego.Dlsym(ioKit, "IOServiceMatching")
-	ioRegistryEntrySearchCFProperty, _ = purego.Dlsym(ioKit, "IORegistryEntrySearchCFProperty")
-	ioObjectRelease, _                 = purego.Dlsym(ioKit, "IOObjectRelease")
 )
 
 var (
 	CFStringCreateWithCString CFStringCreateWithCStringFunc
 	CFGetTypeID               CFGetTypeIDFunc
 	CFStringGetTypeID         CFStringGetTypeIDFunc
+	CFStringGetLength         CFStringGetLengthFunc
 	CFStringGetCString        CFStringGetCStringFunc
 	CFDictionaryGetTypeID     CFDictionaryGetTypeIDFunc
 	CFDictionaryGetValue      CFDictionaryGetValueFunc
@@ -98,20 +85,21 @@ var (
 )
 
 func init() {
-	purego.RegisterFunc(&CFStringCreateWithCString, cfStringCreateWithCString)
-	purego.RegisterFunc(&CFGetTypeID, cfGetTypeID)
-	purego.RegisterFunc(&CFStringGetTypeID, cfStringGetTypeID)
-	purego.RegisterFunc(&CFStringGetCString, cfStringGetCString)
-	purego.RegisterFunc(&CFDictionaryGetTypeID, cfDictionaryGetTypeID)
-	purego.RegisterFunc(&CFDictionaryGetValue, cfDictionaryGetValue)
-	purego.RegisterFunc(&CFNumberGetValue, cfNumberGetValue)
-	purego.RegisterFunc(&CFRelease, cfRelease)
+	purego.RegisterLibFunc(&CFStringCreateWithCString, coreFoundation, "CFStringCreateWithCString")
+	purego.RegisterLibFunc(&CFGetTypeID, coreFoundation, "CFGetTypeID")
+	purego.RegisterLibFunc(&CFStringGetTypeID, coreFoundation, "CFStringGetTypeID")
+	purego.RegisterLibFunc(&CFStringGetLength, coreFoundation, "CFStringGetLength")
+	purego.RegisterLibFunc(&CFStringGetCString, coreFoundation, "CFStringGetCString")
+	purego.RegisterLibFunc(&CFDictionaryGetTypeID, coreFoundation, "CFDictionaryGetTypeID")
+	purego.RegisterLibFunc(&CFDictionaryGetValue, coreFoundation, "CFDictionaryGetValue")
+	purego.RegisterLibFunc(&CFNumberGetValue, coreFoundation, "CFNumberGetValue")
+	purego.RegisterLibFunc(&CFRelease, coreFoundation, "CFRelease")
 
-	purego.RegisterFunc(&IOServiceGetMatchingServices, ioServiceGetMatchingServices)
-	purego.RegisterFunc(&IOIteratorNext, ioIteratorNext)
-	purego.RegisterFunc(&IOServiceMatching, ioServiceMatching)
-	purego.RegisterFunc(&IORegistryEntrySearchCFProperty, ioRegistryEntrySearchCFProperty)
-	purego.RegisterFunc(&IOObjectRelease, ioObjectRelease)
+	purego.RegisterLibFunc(&IOServiceGetMatchingServices, ioKit, "IOServiceGetMatchingServices")
+	purego.RegisterLibFunc(&IOIteratorNext, ioKit, "IOIteratorNext")
+	purego.RegisterLibFunc(&IOServiceMatching, ioKit, "IOServiceMatching")
+	purego.RegisterLibFunc(&IORegistryEntrySearchCFProperty, ioKit, "IORegistryEntrySearchCFProperty")
+	purego.RegisterLibFunc(&IOObjectRelease, ioKit, "IOObjectRelease")
 }
 
 func GetGPUModel() ([]string, error) {
@@ -202,8 +190,9 @@ func findProperties(service ioRegistryEntry, key, dictKey uintptr) ([]byte, int,
 		switch CFGetTypeID(ptrValue) {
 		// model
 		case CFStringGetTypeID():
-			buf := make([]byte, 1024)
-			CFStringGetCString(ptrValue, &buf[0], int32(unsafe.Sizeof(buf)), uint32(kCFStringEncodingUTF8))
+			length := CFStringGetLength(ptrValue) + 1 // null terminator
+			buf := make([]byte, length-1)
+			CFStringGetCString(ptrValue, &buf[0], length, uint32(kCFStringEncodingUTF8))
 			CFRelease(ptrValue)
 			return buf, 0, nil
 		// PerformanceStatistics
