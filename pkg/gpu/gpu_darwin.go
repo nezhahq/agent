@@ -152,10 +152,8 @@ func findDevices(key string) ([]string, error) {
 		result, _, _ := findProperties(service, uintptr(cfStr), 0)
 		IOObjectRelease(service)
 
-		resultStr := string(result)
-
-		if util.ContainsStr(validVendors, resultStr) {
-			results = append(results, resultStr)
+		if util.ContainsStr(validVendors, result) {
+			results = append(results, result)
 			index++
 		} else if key == "model" && !done {
 			IOObjectRelease(iterator)
@@ -211,7 +209,7 @@ func findUtilization(key, dictKey string) (int, error) {
 	return result, err
 }
 
-func findProperties(service ioRegistryEntry, key, dictKey uintptr) ([]byte, int, error) {
+func findProperties(service ioRegistryEntry, key, dictKey uintptr) (string, int, error) {
 	properties := IORegistryEntrySearchCFProperty(service, kIOServicePlane, key, kCFAllocatorDefault, kIORegistryIterateRecursively)
 	ptrValue := uintptr(properties)
 	if properties != nil {
@@ -222,10 +220,10 @@ func findProperties(service ioRegistryEntry, key, dictKey uintptr) ([]byte, int,
 			buf := make([]byte, length-1)
 			CFStringGetCString(ptrValue, &buf[0], length, uint32(kCFStringEncodingUTF8))
 			CFRelease(ptrValue)
-			return buf, 0, nil
+			return string(buf), 0, nil
 		case CFDataGetTypeID():
 			length := CFDataGetLength(ptrValue)
-			bin := unsafe.Slice((*byte)(CFDataGetBytePtr(ptrValue)), length)
+			bin := unsafe.String((*byte)(CFDataGetBytePtr(ptrValue)), length)
 			CFRelease(ptrValue)
 			return bin, 0, nil
 		// PerformanceStatistics
@@ -234,14 +232,14 @@ func findProperties(service ioRegistryEntry, key, dictKey uintptr) ([]byte, int,
 			if cfValue != nil {
 				var value int
 				if CFNumberGetValue(uintptr(cfValue), kCFNumberIntType, uintptr(unsafe.Pointer(&value))) {
-					return nil, value, nil
+					return "", value, nil
 				} else {
-					return nil, 0, fmt.Errorf("failed to exec CFNumberGetValue")
+					return "", 0, fmt.Errorf("failed to exec CFNumberGetValue")
 				}
 			} else {
-				return nil, 0, fmt.Errorf("failed to exec CFDictionaryGetValue")
+				return "", 0, fmt.Errorf("failed to exec CFDictionaryGetValue")
 			}
 		}
 	}
-	return nil, 0, fmt.Errorf("failed to exec IORegistryEntrySearchCFProperty")
+	return "", 0, fmt.Errorf("failed to exec IORegistryEntrySearchCFProperty")
 }
