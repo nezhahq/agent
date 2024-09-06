@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -39,4 +40,27 @@ func BrowserHeaders() *http.Header {
 		"Accept-Language": {"en,zh-CN;q=0.9,zh;q=0.8"},
 		"User-Agent":      {MacOSChromeUA},
 	}
+}
+
+func ContainsStr(slice []string, str string) bool {
+	if str != "" {
+		for _, item := range slice {
+			if strings.Contains(str, item) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func RemoveDuplicate[T comparable](sliceList []T) []T {
+	allKeys := make(map[T]bool)
+	list := []T{}
+	for _, item := range sliceList {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
 }

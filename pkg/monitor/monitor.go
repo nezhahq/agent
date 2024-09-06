@@ -350,7 +350,7 @@ func updateGPUStat() float64 {
 			gs, err := gpustat.GetGPUStat()
 			if err != nil {
 				statDataFetchAttempts["GPU"]++
-				println("gpustat.GetGPUStat error: ", err, ", attempt: ", statDataFetchAttempts["GPU"])
+				printf("gpustat.GetGPUStat error: %v, attempt: %d", err, statDataFetchAttempts["GPU"])
 				return 0
 			} else {
 				statDataFetchAttempts["GPU"] = 0
