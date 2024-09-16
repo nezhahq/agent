@@ -18,7 +18,7 @@ require (
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20240713123605-d560a87d03a0
 	github.com/nezhahq/service v0.0.0-20240704142721-eba37f9cc709
 	github.com/quic-go/quic-go v0.40.1
-	github.com/refraction-networking/utls v1.6.1
+	github.com/refraction-networking/utls v1.6.7
 	github.com/shirou/gopsutil/v4 v4.24.6
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
@@ -32,7 +32,7 @@ require (
 require (
 	gitee.com/naibahq/go-gitee v0.0.0-20240713052758-bc992e4c5b2c // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
-	github.com/andybalholm/brotli v1.0.5 // indirect
+	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/antihax/optional v1.0.0 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
@@ -48,7 +48,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jaypipes/pcidb v1.0.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
-	github.com/klauspost/compress v1.17.2 // indirect
+	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/lufia/plan9stats v0.0.0-20230110061619-bbe2e5e100de // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
