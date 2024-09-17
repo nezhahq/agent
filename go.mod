@@ -19,7 +19,7 @@ require (
 	github.com/nezhahq/service v0.0.0-20240704142721-eba37f9cc709
 	github.com/quic-go/quic-go v0.40.1
 	github.com/refraction-networking/utls v1.6.7
-	github.com/shirou/gopsutil/v4 v4.24.6
+	github.com/shirou/gopsutil/v4 v4.24.8
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	golang.org/x/net v0.29.0
