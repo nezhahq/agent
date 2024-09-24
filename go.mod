@@ -10,7 +10,7 @@ require (
 	github.com/creack/pty v1.1.23
 	github.com/dean2021/goss v0.0.0-20230129073947-df90431348f1
 	github.com/ebi-yade/altsvc-go v0.1.1
-	github.com/ebitengine/purego v0.7.1
+	github.com/ebitengine/purego v0.8.0
 	github.com/go-ping/ping v1.1.0
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/jaypipes/ghw v0.13.0
