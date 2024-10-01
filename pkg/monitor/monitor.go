@@ -36,6 +36,10 @@ var (
 	excludeNetInterfaces = []string{
 		"lo", "tun", "docker", "veth", "br-", "vmbr", "vnet", "kube",
 	}
+	sensorIgnoreList = []string{
+		"PMU tcal", // the calibration sensor on arm macs, value is fixed
+		"noname",
+	}
 	agentConfig *model.AgentConfig
 )
 
@@ -238,7 +242,7 @@ func TrackNetworkSpeed() {
 					continue
 				}
 			} else {
-				if isListContainsStr(excludeNetInterfaces, v.Name) {
+				if util.ContainsStr(excludeNetInterfaces, v.Name) {
 					continue
 				}
 			}
@@ -271,7 +275,7 @@ func getDiskTotalAndUsed() (total uint64, used uint64) {
 		for _, d := range diskList {
 			fsType := strings.ToLower(d.Fstype)
 			// 不统计 K8s 的虚拟挂载点：https://github.com/shirou/gopsutil/issues/1007
-			if devices[d.Device] == "" && isListContainsStr(expectDiskFsTypes, fsType) && !strings.Contains(d.Mountpoint, "/var/lib/kubelet") {
+			if devices[d.Device] == "" && util.ContainsStr(expectDiskFsTypes, fsType) && !strings.Contains(d.Mountpoint, "/var/lib/kubelet") {
 				devices[d.Device] = d.Mountpoint
 			}
 		}
@@ -377,7 +381,7 @@ func updateTemperatureStat() {
 			statDataFetchAttempts["Temperatures"] = 0
 			tempStat := []model.SensorTemperature{}
 			for _, t := range temperatures {
-				if t.Temperature > 0 {
+				if t.Temperature > 0 && !util.ContainsStr(sensorIgnoreList, t.SensorKey) {
 					tempStat = append(tempStat, model.SensorTemperature{
 						Name:        t.SensorKey,
 						Temperature: t.Temperature,
@@ -392,15 +396,6 @@ func updateTemperatureStat() {
 			temperatureStat = tempStat
 		}
 	}
-}
-
-func isListContainsStr(list []string, str string) bool {
-	for i := 0; i < len(list); i++ {
-		if strings.Contains(str, list[i]) {
-			return true
-		}
-	}
-	return false
 }
 
 func printf(format string, v ...interface{}) {
