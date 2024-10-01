@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -62,7 +63,7 @@ var statDataFetchAttempts = map[string]int{
 }
 
 var (
-	updateTempStatus int32
+	updateTempStatus = new(atomic.Int32)
 )
 
 func InitConfig(cfg *model.AgentConfig) {
@@ -362,10 +363,10 @@ func updateGPUStat() float64 {
 }
 
 func updateTemperatureStat() {
-	if !atomic.CompareAndSwapInt32(&updateTempStatus, 0, 1) {
+	if !updateTempStatus.CompareAndSwap(0, 1) {
 		return
 	}
-	defer atomic.StoreInt32(&updateTempStatus, 0)
+	defer updateTempStatus.Store(0)
 
 	if statDataFetchAttempts["Temperatures"] < maxDeviceDataFetchAttempts {
 		temperatures, err := sensors.SensorsTemperatures()
@@ -383,6 +384,10 @@ func updateTemperatureStat() {
 					})
 				}
 			}
+
+			sort.Slice(tempStat, func(i, j int) bool {
+				return tempStat[i].Name < tempStat[j].Name
+			})
 
 			temperatureStat = tempStat
 		}
