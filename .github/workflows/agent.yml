@@ -1,42 +1,116 @@
-name: Release
+name: Build + Release
 
 on:
   push:
     tags:
       - "v*"
+    branches:
+      - main
+    paths-ignore:
+      - ".github/workflows/agent.yml"
+      - ".github/workflows/codeql-analysis.yml"
+      - ".github/workflows/test.yml"
+      - ".github/workflows/contributors.yml"
+      - "README.md"
+      - ".goreleaser.yml"
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  deploy:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        goos: [linux, windows, darwin, freebsd]
+        goarch: [amd64, arm64, 386]
+        include:
+          - goos: linux
+            goarch: 386
+          - goos: linux
+            goarch: s390x
+          - goos: linux
+            goarch: riscv64
+          - goos: linux
+            goarch: arm
+          - goos: linux
+            goarch: mips
+            gomips: softfloat
+          - goos: linux
+            goarch: mipsle
+            gomips: softfloat
+          - goos: freebsd
+            goarch: arm
+        exclude:
+          - goos: darwin
+            goarch: 386
+
+    name: Build artifacts
     runs-on: ubuntu-latest
-    container:
-      # 1.20 是 Windows 7/8 Server 2008/2012 最后一个支持版本
-      image: goreleaser/goreleaser-cross:v1.20
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      GOMIPS: ${{ matrix.gomips }}
     steps:
-      - run: |
-          git config --global --add safe.directory /__w/agent/agent
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          go-version: "1.20.13"
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v2
+          go-version: "1.20.14"
+
+      - name: Build Test
+        if: github.event_name != 'push' || !contains(github.ref, 'refs/tags/')
+        uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
-          args: release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Trigger sync
-        if: ${{ env.SYNCED == 0 }}
-        uses: actions/github-script@v6
+          version: '~> v2'
+          args: build --single-target --clean --snapshot
+
+      - name: Build
+        if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+        uses: goreleaser/goreleaser-action@v6
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-            owner: 'nezhahq',
-            repo: 'agent',
-            workflow_id: 'sync-release.yml',
-            ref: 'main'
-            })
+          distribution: goreleaser
+          version: '~> v2'
+          args: build --single-target --clean
+
+      - name: Archive
+        run: zip -jr dist/nezha-agent_${GOOS}_${GOARCH}.zip dist/*/*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nezha-agent_${{ env.GOOS }}_${{ env.GOARCH }}
+          path: |
+            ./dist/nezha-agent_${{ env.GOOS }}_${{ env.GOARCH }}.zip
+
+  release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    needs: build
+    name: Release
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./assets
+
+      - name: Checksum
+        run: sha256sum ./assets/*/*.zip | awk -F" |/" '{print $1, $NF}' > checksums.txt
+
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "checksums.txt,assets/*/*.zip"
+          generateReleaseNotes: true
+
+      - name: Trigger sync
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          GH_DEBUG: api
+        run: |
+          gh workflow run sync-release.yml

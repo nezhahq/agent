@@ -1,3 +1,4 @@
+version: 2
 before:
   hooks:
     - go mod tidy -v
@@ -11,6 +12,7 @@ builds:
       - linux
       - windows
       - freebsd
+      - darwin
     goarch:
       - arm
       - arm64
@@ -27,52 +29,5 @@ builds:
         goarch: arm
     main: ./cmd/agent
     binary: nezha-agent
-  - id: darwin-amd64
-    env:
-      - CGO_ENABLED=1
-      - CC=o64-clang
-      - CXX=o64-clang++
-    ldflags:
-      - -s -w -X main.version={{.Version}} -X main.arch={{.Arch}}
-    goos:
-      - darwin
-    goarch:
-      - amd64
-    main: ./cmd/agent
-    binary: nezha-agent
-  - id: darwin-arm64
-    env:
-      - CGO_ENABLED=1
-      - CC=oa64-clang
-      - CXX=oa64-clang++
-    ldflags:
-      - -s -w -X main.version={{.Version}} -X main.arch={{.Arch}}
-    goos:
-      - darwin
-    goarch:
-      - arm64
-    main: ./cmd/agent
-    binary: nezha-agent
-universal_binaries:
-  - name_template: "nezha-agent"
-    replace: false
-checksum:
-  name_template: "checksums.txt"
 snapshot:
-  name_template: "nezha-agent"
-archives:
-  - name_template: "nezha-agent_{{ .Os }}_{{ .Arch }}"
-    format: zip
-    files:
-      - none*
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore"
-      - Merge pull request
-      - Merge branch
-      - go mod tidy
-      - New translations
+  version_template: "nezha-agent"

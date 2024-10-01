@@ -11,31 +11,32 @@ on:
       - ".github/workflows/contributors.yml"
       - "README.md"
       - ".goreleaser.yml"
+  pull_request:
+    branches:
+      - main
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
-    container:
-      image: goreleaser/goreleaser-cross:v1.20
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu, windows, macos]
+
+    runs-on: ${{ matrix.os }}-latest
     steps:
-      - run: |
-          git config --global --add safe.directory /__w/agent/agent
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.20.13"
+          go-version: "1.20.14"
+
       - name: Unit test
       # Skip TestCloudflareDetection here, as most IP addresses of Github's action
       # runners have been marked as bot.
         run: |
           go test -skip TestCloudflareDetection -v ./...
+          
       #- name: Run Gosec Security Scanner
+      #  if: runner.os == 'Linux'
       #  run: |
       #    go install github.com/securego/gosec/v2/cmd/gosec@v2.19.0
       #    gosec -exclude=G104 ./...
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v2
-        with:
-          distribution: goreleaser
-          version: latest
-          args: build --snapshot
