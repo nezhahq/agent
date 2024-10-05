@@ -61,6 +61,11 @@ jobs:
         with:
           go-version: "1.20.14"
 
+      # WARNING: This is temporary remove it after the next release of gopsutil
+      - name: Patch gopsutil
+        run: |
+          curl -L https://github.com/shirou/gopsutil/pull/1722.patch | sudo patch -p1 -d $(printf "%s%s" "$(go env GOMODCACHE)" "/github.com/shirou/gopsutil/v4@v4.24.9")
+
       - name: Build Test
         if: github.event_name != 'push' || !contains(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@v6
