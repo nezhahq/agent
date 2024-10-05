@@ -61,6 +61,11 @@ jobs:
         with:
           go-version: "1.20.14"
 
+      # WARNING: This is temporary remove it after the next release of gopsutil
+      - name: Patch gopsutil
+        run: |
+          curl -L https://github.com/shirou/gopsutil/pull/1722.patch | sudo patch -p1 -d $(printf "%s%s" "$(go env GOMODCACHE)" "/github.com/shirou/gopsutil/v4@v4.24.9")
+
       - name: Build Test
         if: github.event_name != 'push' || !contains(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@v6
@@ -79,6 +84,11 @@ jobs:
 
       - name: Archive
         run: zip -jr dist/nezha-agent_${GOOS}_${GOARCH}.zip dist/*/*
+      
+      # Add this step to make sure the cache is unaffected
+      - name: Revert changes
+        run: |
+          curl -L https://github.com/shirou/gopsutil/pull/1722.patch | sudo patch -p1 -R -d $(printf "%s%s" "$(go env GOMODCACHE)" "/github.com/shirou/gopsutil/v4@v4.24.9")
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
