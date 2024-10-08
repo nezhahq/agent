@@ -19,9 +19,9 @@ import (
 
 	"github.com/blang/semver"
 	"github.com/ebi-yade/altsvc-go"
-	"github.com/go-ping/ping"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
 	"github.com/nezhahq/service"
+	ping "github.com/prometheus-community/pro-bing"
 	"github.com/quic-go/quic-go/http3"
 	utls "github.com/refraction-networking/utls"
 	"github.com/shirou/gopsutil/v4/host"
@@ -489,15 +489,15 @@ func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
 	if strings.Contains(ipAddr, ":") {
 		ipAddr = fmt.Sprintf("[%s]", ipAddr)
 	}
+	printf("TCP-Ping Task: Pinging %s:%s", ipAddr, port)
 	start := time.Now()
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%s", ipAddr, port), time.Second*10)
-	if err == nil {
-		conn.Write([]byte("ping\n"))
-		conn.Close()
-		result.Delay = float32(time.Since(start).Microseconds()) / 1000.0
-		result.Successful = true
-	} else {
+	if err != nil {
 		result.Data = err.Error()
+	} else {
+		conn.Close()
+		result.Delay = float32(time.Since(start).Milliseconds())
+		result.Successful = true
 	}
 }
 
@@ -507,6 +507,7 @@ func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
 		result.Data = err.Error()
 		return
 	}
+	printf("ICMP-Ping Task: Pinging %s", ipAddr)
 	pinger, err := ping.NewPinger(ipAddr)
 	if err == nil {
 		pinger.SetPrivileged(true)

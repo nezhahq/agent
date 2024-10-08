@@ -64,6 +64,7 @@ jobs:
       # WARNING: This is temporary remove it after the next release of gopsutil
       - name: Patch gopsutil
         run: |
+          go mod tidy -v
           curl -L https://github.com/shirou/gopsutil/pull/1722.patch | sudo patch -p1 -d $(printf "%s%s" "$(go env GOMODCACHE)" "/github.com/shirou/gopsutil/v4@v4.24.9")
 
       - name: Build Test
