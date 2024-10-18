@@ -27,6 +27,7 @@ import (
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -263,15 +264,27 @@ func run() {
 		} else {
 			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
+		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
 		conn, err = grpc.NewClient(agentCliParam.Server, securityOption, grpc.WithKeepaliveParams(keepaliveOptions), grpc.WithPerRPCCredentials(&auth))
 		if err != nil {
 			printf("与面板建立连接失败: %v", err)
 			retry()
+			cancel()
+			continue
+		}
+		state := conn.GetState()
+		if state == connectivity.Idle {
+			conn.Connect()
+		}
+		if !conn.WaitForStateChange(timeOutCtx, state) {
+			printf("与面板建立连接失败: 连接超时")
+			retry()
+			cancel()
 			continue
 		}
 		client = pb.NewNezhaServiceClient(conn)
 		// 第一步注册
-		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
+		timeOutCtx, cancel = context.WithTimeout(context.Background(), networkTimeOut)
 		_, err = client.ReportSystemInfo(timeOutCtx, monitor.GetHost().PB())
 		if err != nil {
 			printf("上报系统信息失败: %v", err)
