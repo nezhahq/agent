@@ -26,7 +26,7 @@ func TestCloudflareDetection(t *testing.T) {
 		headers := util.BrowserHeaders()
 		client.Transport = utlsx.NewUTLSHTTPRoundTripperWithProxy(
 			utls.HelloChrome_Auto, new(utls.Config),
-			http.DefaultTransport, nil, headers,
+			http.DefaultTransport, nil, &headers,
 		)
 		resp, err = doRequest(client, url)
 		if err != nil {

@@ -128,7 +128,7 @@ func getPendingConnectionID(dest string, alpnIsH2 bool) pendingConnKey {
 
 func (r *uTLSHTTPRoundTripperImpl) putConn(addr string, alpnIsH2 bool, conn net.Conn) {
 	connId := getPendingConnectionID(addr, alpnIsH2)
-	r.pendingConn[connId] = NewUnclaimedConnection(conn, time.Minute)
+	r.pendingConn[connId] = newUnclaimedConnection(conn, time.Minute)
 }
 
 func (r *uTLSHTTPRoundTripperImpl) getConn(addr string, alpnIsH2 bool) net.Conn {
@@ -241,7 +241,7 @@ func (r *uTLSHTTPRoundTripperImpl) init() {
 	}
 }
 
-func NewUnclaimedConnection(conn net.Conn, expireTime time.Duration) *unclaimedConnection {
+func newUnclaimedConnection(conn net.Conn, expireTime time.Duration) *unclaimedConnection {
 	c := &unclaimedConnection{
 		Conn: conn,
 	}

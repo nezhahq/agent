@@ -125,7 +125,7 @@ func init() {
 	http.DefaultClient.Timeout = time.Second * 30
 	httpClient.Transport = utlsx.NewUTLSHTTPRoundTripperWithProxy(
 		utls.HelloChrome_Auto, new(utls.Config),
-		http.DefaultTransport, nil, headers,
+		http.DefaultTransport, nil, &headers,
 	)
 
 	ex, err := os.Executable()
@@ -248,7 +248,6 @@ func run() {
 	}
 
 	for {
-		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
 		var securityOption grpc.DialOption
 		if agentCliParam.TLS {
 			if agentCliParam.InsecureTLS {
@@ -259,17 +258,15 @@ func run() {
 		} else {
 			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		conn, err = grpc.DialContext(timeOutCtx, agentCliParam.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
+		conn, err = grpc.NewClient(agentCliParam.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
 		if err != nil {
 			printf("与面板建立连接失败: %v", err)
-			cancel()
 			retry()
 			continue
 		}
-		cancel()
 		client = pb.NewNezhaServiceClient(conn)
 		// 第一步注册
-		timeOutCtx, cancel = context.WithTimeout(context.Background(), networkTimeOut)
+		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
 		_, err = client.ReportSystemInfo(timeOutCtx, monitor.GetHost().PB())
 		if err != nil {
 			printf("上报系统信息失败: %v", err)
