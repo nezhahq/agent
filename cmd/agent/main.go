@@ -264,7 +264,7 @@ func run() {
 		} else {
 			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
+		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut*2)
 		conn, err = grpc.NewClient(agentCliParam.Server, securityOption, grpc.WithKeepaliveParams(keepaliveOptions), grpc.WithPerRPCCredentials(&auth))
 		if err != nil {
 			printf("与面板建立连接失败: %v", err)
