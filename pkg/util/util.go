@@ -34,8 +34,8 @@ func Printf(enabled bool, format string, v ...interface{}) {
 	}
 }
 
-func BrowserHeaders() *http.Header {
-	return &http.Header{
+func BrowserHeaders() http.Header {
+	return http.Header{
 		"Accept":          {"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8"},
 		"Accept-Language": {"en,zh-CN;q=0.9,zh;q=0.8"},
 		"User-Agent":      {MacOSChromeUA},
