@@ -15,7 +15,7 @@ var (
 	cfList = []string{
 		"https://blog.cloudflare.com/cdn-cgi/trace",
 		"https://dash.cloudflare.com/cdn-cgi/trace",
-		"https://cf-ns.com/cdn-cgi/trace", // 有国内节点
+		"https://developers.cloudflare.com/cdn-cgi/trace",
 	}
 	CachedIP, GeoQueryIP, CachedCountryCode string
 	httpClientV4                            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
