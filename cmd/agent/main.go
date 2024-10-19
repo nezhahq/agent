@@ -258,7 +258,7 @@ func run() {
 		} else {
 			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		conn, err = grpc.NewClient(agentCliParam.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
+		conn, err = grpc.NewClient("passthrough:///"+agentCliParam.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
 		if err != nil {
 			printf("与面板建立连接失败: %v", err)
 			retry()
