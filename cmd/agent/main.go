@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
 
 	"github.com/nezhahq/agent/model"
 	fm "github.com/nezhahq/agent/pkg/fm"
@@ -63,7 +64,7 @@ var (
 	arch        string
 	client      pb.NezhaServiceClient
 	initialized bool
-	resolver    = &net.Resolver{PreferGo: true}
+	dnsResolver = &net.Resolver{PreferGo: true}
 )
 
 var agentCmd = &cobra.Command{
@@ -99,6 +100,7 @@ const (
 )
 
 func init() {
+	resolver.SetDefaultScheme("passthrough")
 	net.DefaultResolver.PreferGo = true // 使用 Go 内置的 DNS 解析器解析域名
 	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
 		d := net.Dialer{
@@ -862,7 +864,7 @@ func generateQueue(start int, size int) []int {
 
 func lookupIP(hostOrIp string) (string, error) {
 	if net.ParseIP(hostOrIp) == nil {
-		ips, err := resolver.LookupIPAddr(context.Background(), hostOrIp)
+		ips, err := dnsResolver.LookupIPAddr(context.Background(), hostOrIp)
 		if err != nil {
 			return "", err
 		}
