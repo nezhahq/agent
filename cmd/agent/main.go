@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -25,7 +26,6 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	utls "github.com/refraction-networking/utls"
 	"github.com/shirou/gopsutil/v4/host"
-	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -41,45 +41,15 @@ import (
 	pb "github.com/nezhahq/agent/proto"
 )
 
-// Agent 运行时参数。如需添加新参数，记得同时在 service.go 中添加
-type AgentCliParam struct {
-	SkipConnectionCount   bool   // 跳过连接数检查
-	SkipProcsCount        bool   // 跳过进程数量检查
-	DisableAutoUpdate     bool   // 关闭自动更新
-	DisableForceUpdate    bool   // 关闭强制更新
-	DisableCommandExecute bool   // 关闭命令执行
-	Server                string // 服务器地址
-	ClientSecret          string // 客户端密钥
-	ReportDelay           int    // 报告间隔
-	TLS                   bool   // 是否使用TLS加密传输至服务端
-	InsecureTLS           bool   // 是否禁用证书检查
-	Version               bool   // 当前版本号
-	IPReportPeriod        uint32 // 上报IP间隔
-	UseIPv6CountryCode    bool   // 默认优先展示IPv6旗帜
-	UseGiteeToUpgrade     bool   // 强制从Gitee获取更新
-}
-
 var (
-	version     string
-	arch        string
-	client      pb.NezhaServiceClient
-	initialized bool
-	dnsResolver = &net.Resolver{PreferGo: true}
-)
-
-var agentCmd = &cobra.Command{
-	Use: "agent",
-	Run: func(cmd *cobra.Command, args []string) {
-		runService("", nil)
-	},
-	PreRun:           preRun,
-	PersistentPreRun: persistPreRun,
-}
-
-var (
-	agentCliParam AgentCliParam
-	agentConfig   model.AgentConfig
-	httpClient    = &http.Client{
+	version        string
+	arch           string
+	executablePath string
+	client         pb.NezhaServiceClient
+	initialized    bool
+	dnsResolver    = &net.Resolver{PreferGo: true}
+	agentConfig    model.AgentConfig
+	httpClient     = &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -122,7 +92,6 @@ func init() {
 		}
 		return nil, err
 	}
-
 	headers := util.BrowserHeaders()
 	http.DefaultClient.Timeout = time.Second * 30
 	httpClient.Transport = utlsx.NewUTLSHTTPRoundTripperWithProxy(
@@ -130,43 +99,44 @@ func init() {
 		http.DefaultTransport, nil, &headers,
 	)
 
-	ex, err := os.Executable()
+	// 来自于 GoReleaser 的版本号
+	monitor.Version = version
+}
+
+func main() {
+	var err error
+	executablePath, err = os.Executable()
 	if err != nil {
 		panic(err)
 	}
 
+	var showVersion, isEditConfig, showHelp bool
+	var configPath, serviceAction string
+
 	// 初始化运行参数
-	agentCmd.PersistentFlags().StringVarP(&agentCliParam.Server, "server", "s", "localhost:5555", "管理面板RPC端口")
-	agentCmd.PersistentFlags().StringVarP(&agentCliParam.ClientSecret, "password", "p", "", "Agent连接Secret")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.TLS, "tls", false, "启用SSL/TLS加密")
-	agentCmd.PersistentFlags().BoolVarP(&agentCliParam.InsecureTLS, "insecure", "k", false, "禁用证书检查")
-	agentCmd.PersistentFlags().BoolVarP(&agentConfig.Debug, "debug", "d", false, "开启调试信息")
-	agentCmd.PersistentFlags().IntVar(&agentCliParam.ReportDelay, "report-delay", 1, "系统状态上报间隔")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.SkipConnectionCount, "skip-conn", false, "不监控连接数")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.SkipProcsCount, "skip-procs", false, "不监控进程数")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableCommandExecute, "disable-command-execute", false, "禁止在此机器上执行命令")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseIPv6CountryCode, "use-ipv6-countrycode", false, "使用IPv6的位置上报")
-	agentCmd.PersistentFlags().BoolVar(&agentConfig.GPU, "gpu", false, "启用GPU监控")
-	agentCmd.PersistentFlags().BoolVar(&agentConfig.Temperature, "temperature", false, "启用温度监控")
-	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseGiteeToUpgrade, "gitee", false, "使用Gitee获取更新")
-	agentCmd.PersistentFlags().Uint32VarP(&agentCliParam.IPReportPeriod, "ip-report-period", "u", 30*60, "本地IP更新间隔, 上报频率依旧取决于report-delay的值")
-	agentCmd.Flags().BoolVarP(&agentCliParam.Version, "version", "v", false, "查看当前版本号")
+	flag.BoolVar(&showVersion, "v", false, "查看当前版本号")
+	flag.BoolVar(&showHelp, "h", false, "查看帮助")
+	flag.BoolVar(&isEditConfig, "edit", false, "编辑配置文件")
+	flag.StringVar(&serviceAction, "service", "", "服务操作 <install/uninstall/start/stop/restart>")
+	flag.StringVar(&configPath, "c", filepath.Dir(executablePath)+"/config.yml", "配置文件路径")
 
-	agentConfig.Read(filepath.Dir(ex) + "/config.yml")
+	flag.Parse()
 
-	monitor.InitConfig(&agentConfig)
-}
-
-func main() {
-	if err := agentCmd.Execute(); err != nil {
-		println(err)
-		os.Exit(1)
+	if showHelp {
+		flag.Usage()
+		os.Exit(0)
 	}
-}
 
-func persistPreRun(cmd *cobra.Command, args []string) {
+	if showVersion {
+		fmt.Println(version)
+		os.Exit(0)
+	}
+
+	if isEditConfig {
+		editAgentConfig()
+		os.Exit(0)
+	}
+
 	// windows环境处理
 	if runtime.GOOS == "windows" {
 		hostArch, err := host.KernelArch()
@@ -186,35 +156,35 @@ func persistPreRun(cmd *cobra.Command, args []string) {
 			panic(fmt.Sprintf("与当前系统不匹配，当前运行 %s_%s, 需要下载 %s_%s", runtime.GOOS, arch, runtime.GOOS, hostArch))
 		}
 	}
-}
 
-func preRun(cmd *cobra.Command, args []string) {
-	// 来自于 GoReleaser 的版本号
-	monitor.Version = version
-
-	if agentCliParam.Version {
-		fmt.Println(version)
-		os.Exit(0)
-	}
-
-	if agentCliParam.ClientSecret == "" {
-		cmd.Help()
+	if err := agentConfig.Read(configPath); err != nil {
+		println(err)
 		os.Exit(1)
 	}
 
-	if agentCliParam.ReportDelay < 1 || agentCliParam.ReportDelay > 4 {
+	monitor.InitConfig(&agentConfig)
+
+	if agentConfig.ClientSecret == "" {
+		println("ClientSecret 不能为空")
+		os.Exit(1)
+	}
+
+	if agentConfig.ReportDelay < 1 || agentConfig.ReportDelay > 4 {
 		println("report-delay 的区间为 1-4")
 		os.Exit(1)
 	}
+
+	runService(serviceAction)
 }
 
 func run() {
 	auth := model.AuthHandler{
-		ClientSecret: agentCliParam.ClientSecret,
+		ClientSecret: agentConfig.ClientSecret,
+		ClientUUID:   agentConfig.UUID,
 	}
 
 	// 下载远程命令执行需要的终端
-	if !agentCliParam.DisableCommandExecute {
+	if !agentConfig.DisableCommandExecute {
 		go func() {
 			if err := pty.DownloadDependency(); err != nil {
 				printf("pty 下载依赖失败: %v", err)
@@ -224,10 +194,10 @@ func run() {
 	// 上报服务器信息
 	go reportStateDaemon()
 	// 更新IP信息
-	go monitor.UpdateIP(agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
+	go monitor.UpdateIP(agentConfig.UseIPv6CountryCode, agentConfig.IPReportPeriod)
 
 	// 定时检查更新
-	if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
+	if _, err := semver.Parse(version); err == nil && !agentConfig.DisableAutoUpdate {
 		doSelfUpdate(true)
 		go func() {
 			for range time.Tick(20 * time.Minute) {
@@ -251,8 +221,8 @@ func run() {
 
 	for {
 		var securityOption grpc.DialOption
-		if agentCliParam.TLS {
-			if agentCliParam.InsecureTLS {
+		if agentConfig.TLS {
+			if agentConfig.InsecureTLS {
 				securityOption = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true}))
 			} else {
 				securityOption = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}))
@@ -260,7 +230,7 @@ func run() {
 		} else {
 			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		conn, err = grpc.NewClient(agentCliParam.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
+		conn, err = grpc.NewClient(agentConfig.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
 		if err != nil {
 			printf("与面板建立连接失败: %v", err)
 			retry()
@@ -291,23 +261,16 @@ func run() {
 	}
 }
 
-func runService(action string, flags []string) {
-	dir, err := os.Getwd()
-	if err != nil {
-		printf("获取当前工作目录时出错: ", err)
-		return
-	}
-
+func runService(action string) {
 	winConfig := map[string]interface{}{
 		"OnFailure": "restart",
 	}
 
 	svcConfig := &service.Config{
-		Name:             "nezha-agent",
-		DisplayName:      "Nezha Agent",
+		Name:             filepath.Base(executablePath),
+		DisplayName:      filepath.Base(executablePath),
 		Description:      "哪吒探针监控端",
-		Arguments:        flags,
-		WorkingDirectory: dir,
+		WorkingDirectory: filepath.Dir(executablePath),
 		Option:           winConfig,
 	}
 
@@ -414,7 +377,7 @@ func reportStateDaemon() {
 	for {
 		// 为了更准确的记录时段流量，inited 后再上传状态信息
 		lastReportHostInfo = reportState(lastReportHostInfo)
-		time.Sleep(time.Second * time.Duration(agentCliParam.ReportDelay))
+		time.Sleep(time.Second * time.Duration(agentConfig.ReportDelay))
 	}
 }
 
@@ -422,14 +385,15 @@ func reportState(lastReportHostInfo time.Time) time.Time {
 	if client != nil && initialized {
 		monitor.TrackNetworkSpeed()
 		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
-		_, err := client.ReportSystemState(timeOutCtx, monitor.GetState(agentCliParam.SkipConnectionCount, agentCliParam.SkipProcsCount).PB())
+		_, err := client.ReportSystemState(timeOutCtx, monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB())
 		cancel()
 		if err != nil {
 			printf("reportState error: %v", err)
 			time.Sleep(delayWhenError)
 		}
 		// 每10分钟重新获取一次硬件信息
-		if lastReportHostInfo.Before(time.Now().Add(-10 * time.Minute)) {
+		if lastReportHostInfo.Before(time.Now().Add(-10*time.Minute)) || monitor.GeoQueryIPChanged {
+			monitor.GeoQueryIPChanged = false
 			lastReportHostInfo = time.Now()
 			client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
 			if monitor.GeoQueryIP != "" {
@@ -452,7 +416,7 @@ func doSelfUpdate(useLocalVersion bool) {
 	printf("检查更新: %v", v)
 	var latest *selfupdate.Release
 	var err error
-	if monitor.CachedCountryCode != "cn" && !agentCliParam.UseGiteeToUpgrade {
+	if monitor.CachedCountryCode != "cn" && !agentConfig.UseGiteeToUpgrade {
 		latest, err = selfupdate.UpdateSelf(v, "nezhahq/agent")
 	} else {
 		latest, err = selfupdate.UpdateSelfGitee(v, "naibahq/agent")
@@ -468,7 +432,7 @@ func doSelfUpdate(useLocalVersion bool) {
 }
 
 func handleUpgradeTask(*pb.Task, *pb.TaskResult) {
-	if agentCliParam.DisableForceUpdate {
+	if agentConfig.DisableForceUpdate {
 		return
 	}
 	doSelfUpdate(false)
@@ -617,7 +581,7 @@ func checkAltSvc(start time.Time, altSvcStr string, taskUrl string, result *pb.T
 }
 
 func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
-	if agentCliParam.DisableCommandExecute {
+	if agentConfig.DisableCommandExecute {
 		result.Data = "此 Agent 已禁止命令执行"
 		return
 	}
@@ -666,7 +630,7 @@ type WindowSize struct {
 }
 
 func handleTerminalTask(task *pb.Task) {
-	if agentCliParam.DisableCommandExecute {
+	if agentConfig.DisableCommandExecute {
 		println("此 Agent 已禁止命令执行")
 		return
 	}
@@ -798,7 +762,7 @@ func handleNATTask(task *pb.Task) {
 }
 
 func handleFMTask(task *pb.Task) {
-	if agentCliParam.DisableCommandExecute {
+	if agentConfig.DisableCommandExecute {
 		println("此 Agent 已禁止命令执行")
 		return
 	}
