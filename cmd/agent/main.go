@@ -495,7 +495,7 @@ func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
 		result.Data = err.Error()
 	} else {
 		conn.Close()
-		result.Delay = float32(time.Since(start).Milliseconds())
+		result.Delay = float32(time.Since(start).Microseconds()) / 1000.0
 		result.Successful = true
 	}
 }
