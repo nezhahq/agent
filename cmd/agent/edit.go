@@ -9,22 +9,10 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/shirou/gopsutil/v4/disk"
 	psnet "github.com/shirou/gopsutil/v4/net"
-	"github.com/spf13/cobra"
 )
 
-var editCmd = &cobra.Command{
-	Use:   "edit",
-	Short: "修改要监控的网卡/分区名单，修改自定义 DNS",
-	Run:   editAgentConfig,
-	Args:  cobra.NoArgs,
-}
-
-func init() {
-	agentCmd.AddCommand(editCmd)
-}
-
 // 修改Agent要监控的网卡与硬盘分区
-func editAgentConfig(cmd *cobra.Command, args []string) {
+func editAgentConfig() {
 	nc, err := psnet.IOCounters(true)
 	if err != nil {
 		panic(err)

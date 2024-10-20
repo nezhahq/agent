@@ -2,8 +2,6 @@ name: Run Tests
 
 on:
   push:
-    branches:
-      - main
     paths-ignore:
       - ".github/workflows/agent.yml"
       - ".github/workflows/codeql-analysis.yml"

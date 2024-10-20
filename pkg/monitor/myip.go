@@ -18,8 +18,9 @@ var (
 		"https://developers.cloudflare.com/cdn-cgi/trace",
 	}
 	CachedIP, GeoQueryIP, CachedCountryCode string
-	httpClientV4                            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
-	httpClientV6                            = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
+	GeoQueryIPChanged                       bool = true
+	httpClientV4                                 = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
+	httpClientV6                                 = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
 )
 
 // UpdateIP 按设置时间间隔更新IP地址的缓存
@@ -55,8 +56,10 @@ func UpdateIP(useIPv6CountryCode bool, period uint32) {
 		}
 
 		if ipv6 != "" && (useIPv6CountryCode || ipv4 == "") {
+			GeoQueryIPChanged = GeoQueryIP != ipv6 || GeoQueryIPChanged
 			GeoQueryIP = ipv6
 		} else {
+			GeoQueryIPChanged = GeoQueryIP != ipv4 || GeoQueryIPChanged
 			GeoQueryIP = ipv4
 		}
 
