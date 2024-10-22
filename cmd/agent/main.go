@@ -133,7 +133,7 @@ func main() {
 	}
 
 	if isEditConfig {
-		editAgentConfig()
+		editAgentConfig(configPath)
 		os.Exit(0)
 	}
 
