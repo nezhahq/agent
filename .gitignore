@@ -1,5 +1,6 @@
 .DS_Store
 /agent
 /cmd/agent/agent
+/cmd/agent/config.yml
 *.pprof
 dist

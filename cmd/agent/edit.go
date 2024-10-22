@@ -12,7 +12,9 @@ import (
 )
 
 // 修改Agent要监控的网卡与硬盘分区
-func editAgentConfig() {
+func editAgentConfig(configPath string) {
+	agentConfig.Read(configPath)
+
 	nc, err := psnet.IOCounters(true)
 	if err != nil {
 		panic(err)
