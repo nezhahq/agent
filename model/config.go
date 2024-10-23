@@ -46,6 +46,15 @@ func (c *AgentConfig) Read(path string) error {
 	if err != nil {
 		return err
 	}
+
+	if c.ReportDelay == 0 {
+		c.ReportDelay = 1
+	}
+
+	if c.IPReportPeriod == 0 {
+		c.IPReportPeriod = 1800
+	}
+
 	return nil
 }
 

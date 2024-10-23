@@ -11,6 +11,7 @@ require (
 	github.com/dean2021/goss v0.0.0-20230129073947-df90431348f1
 	github.com/ebi-yade/altsvc-go v0.1.1
 	github.com/ebitengine/purego v0.8.0
+	github.com/hashicorp/go-uuid v1.0.3
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/jaypipes/ghw v0.12.0
 	github.com/json-iterator/go v1.1.12

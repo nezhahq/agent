@@ -7,9 +7,11 @@ import (
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
-	"github.com/nezhahq/agent/model"
+	"github.com/hashicorp/go-uuid"
 	"github.com/shirou/gopsutil/v4/disk"
 	psnet "github.com/shirou/gopsutil/v4/net"
+
+	"github.com/nezhahq/agent/model"
 )
 
 // 修改Agent要监控的网卡与硬盘分区
@@ -34,6 +36,11 @@ func EditAgentConfig(configPath string, agentConfig *model.AgentConfig) {
 		diskAllowlistOptions = append(diskAllowlistOptions, fmt.Sprintf("%s\t%s\t%s", p.Mountpoint, p.Fstype, p.Device))
 	}
 
+	uuid, err := uuid.GenerateUUID()
+	if err != nil {
+		panic(err)
+	}
+
 	var qs = []*survey.Question{
 		{
 			Name: "nic",
@@ -54,6 +61,16 @@ func EditAgentConfig(configPath string, agentConfig *model.AgentConfig) {
 			Prompt: &survey.Input{
 				Message: "自定义 DNS，可输入空格跳过，如 1.1.1.1:53,1.0.0.1:53",
 				Default: strings.Join(agentConfig.DNS, ","),
+			},
+		},
+		{
+			Name: "uuid",
+			Prompt: &survey.Input{
+				Message: "输入 Agent UUID",
+				Default: agentConfig.UUID,
+				Suggest: func(_ string) []string {
+					return []string{uuid}
+				},
 			},
 		},
 		{
@@ -86,6 +103,7 @@ func EditAgentConfig(configPath string, agentConfig *model.AgentConfig) {
 		GPU         bool     `mapstructure:"gpu" json:"gpu"`
 		Temperature bool     `mapstructure:"temperature" json:"temperature"`
 		Debug       bool     `mapstructure:"debug" json:"debug"`
+		UUID        string   `mapstructure:"uuid" json:"uuid"`
 	}{}
 
 	err = survey.Ask(qs, &answers, survey.WithValidator(survey.Required))
@@ -126,6 +144,7 @@ func EditAgentConfig(configPath string, agentConfig *model.AgentConfig) {
 	agentConfig.GPU = answers.GPU
 	agentConfig.Temperature = answers.Temperature
 	agentConfig.Debug = answers.Debug
+	agentConfig.UUID = answers.UUID
 
 	if err = agentConfig.Save(); err != nil {
 		panic(err)

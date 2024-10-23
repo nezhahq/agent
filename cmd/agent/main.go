@@ -19,6 +19,7 @@ import (
 
 	"github.com/blang/semver"
 	"github.com/ebi-yade/altsvc-go"
+	"github.com/hashicorp/go-uuid"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
 	"github.com/nezhahq/service"
 	ping "github.com/prometheus-community/pro-bing"
@@ -203,6 +204,15 @@ func preRun(configPath string) {
 
 	if agentConfig.ReportDelay < 1 || agentConfig.ReportDelay > 4 {
 		log.Fatal("report-delay 的区间为 1-4")
+	}
+
+	if agentConfig.UUID == "" {
+		if uuid, err := uuid.GenerateUUID(); err == nil {
+			agentConfig.UUID = uuid
+			agentConfig.Save()
+		} else {
+			log.Fatalf("生成 UUID 失败：%v", err)
+		}
 	}
 }
 
