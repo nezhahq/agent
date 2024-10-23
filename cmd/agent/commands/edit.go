@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"errors"
@@ -7,12 +7,13 @@ import (
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/nezhahq/agent/model"
 	"github.com/shirou/gopsutil/v4/disk"
 	psnet "github.com/shirou/gopsutil/v4/net"
 )
 
 // 修改Agent要监控的网卡与硬盘分区
-func editAgentConfig(configPath string) {
+func EditAgentConfig(configPath string, agentConfig *model.AgentConfig) {
 	agentConfig.Read(configPath)
 
 	nc, err := psnet.IOCounters(true)
@@ -79,12 +80,12 @@ func editAgentConfig(configPath string) {
 	}
 
 	answers := struct {
-		Nic         []string
-		Disk        []string
-		DNS         string
-		GPU         bool
-		Temperature bool
-		Debug       bool
+		Nic         []string `mapstructure:"nic_allowlist" json:"nic_allowlist"`
+		Disk        []string `mapstructure:"hard_drive_partition_allowlist" json:"hard_drive_partition_allowlist"`
+		DNS         string   `mapstructure:"dns" json:"dns"`
+		GPU         bool     `mapstructure:"gpu" json:"gpu"`
+		Temperature bool     `mapstructure:"temperature" json:"temperature"`
+		Debug       bool     `mapstructure:"debug" json:"debug"`
 	}{}
 
 	err = survey.Ask(qs, &answers, survey.WithValidator(survey.Required))

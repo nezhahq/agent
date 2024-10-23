@@ -21,6 +21,7 @@ require (
 	github.com/refraction-networking/utls v1.6.3
 	github.com/shirou/gopsutil/v4 v4.24.9
 	github.com/spf13/viper v1.19.0
+	github.com/urfave/cli/v2 v2.27.5
 	golang.org/x/net v0.29.0
 	golang.org/x/sys v0.25.0
 	google.golang.org/grpc v1.64.1
@@ -34,6 +35,7 @@ require (
 	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/antihax/optional v1.0.0 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
@@ -62,6 +64,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20221212215047-62379fc7944b // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-20 v0.4.1 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
@@ -73,6 +76,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/ulikunitz/xz v0.5.11 // indirect
+	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/mock v0.4.0 // indirect

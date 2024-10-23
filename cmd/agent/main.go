@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -26,11 +25,13 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	utls "github.com/refraction-networking/utls"
 	"github.com/shirou/gopsutil/v4/host"
+	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
 
+	"github.com/nezhahq/agent/cmd/agent/commands"
 	"github.com/nezhahq/agent/model"
 	fm "github.com/nezhahq/agent/pkg/fm"
 	"github.com/nezhahq/agent/pkg/monitor"
@@ -42,14 +43,15 @@ import (
 )
 
 var (
-	version        string
-	arch           string
-	executablePath string
-	client         pb.NezhaServiceClient
-	initialized    bool
-	dnsResolver    = &net.Resolver{PreferGo: true}
-	agentConfig    model.AgentConfig
-	httpClient     = &http.Client{
+	version           string
+	arch              string
+	defaultConfigPath string
+	executablePath    string
+	client            pb.NezhaServiceClient
+	initialized       bool
+	dnsResolver       = &net.Resolver{PreferGo: true}
+	agentConfig       model.AgentConfig
+	httpClient        = &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -101,42 +103,74 @@ func init() {
 
 	// 来自于 GoReleaser 的版本号
 	monitor.Version = version
-}
 
-func main() {
 	var err error
 	executablePath, err = os.Executable()
 	if err != nil {
 		panic(err)
 	}
 
-	var showVersion, isEditConfig, showHelp bool
-	var configPath, serviceAction string
+	defaultConfigPath = filepath.Join(filepath.Dir(executablePath), "config.yml")
+}
 
-	// 初始化运行参数
-	flag.BoolVar(&showVersion, "v", false, "查看当前版本号")
-	flag.BoolVar(&showHelp, "h", false, "查看帮助")
-	flag.BoolVar(&isEditConfig, "edit", false, "编辑配置文件")
-	flag.StringVar(&serviceAction, "service", "", "服务操作 <install/uninstall/start/stop/restart>")
-	flag.StringVar(&configPath, "c", filepath.Dir(executablePath)+"/config.yml", "配置文件路径")
-
-	flag.Parse()
-
-	if showHelp {
-		flag.Usage()
-		os.Exit(0)
+func main() {
+	app := &cli.App{
+		Usage:   "哪吒监控 Agent",
+		Version: version,
+		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "version", Aliases: []string{"v"}, Usage: "查看当前版本号"},
+			&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "配置文件路径"},
+		},
+		Action: func(c *cli.Context) error {
+			if c.Bool("version") {
+				fmt.Println(c.App.Version)
+				return nil
+			}
+			if path := c.String("config"); path != "" {
+				preRun(path)
+			} else {
+				preRun(defaultConfigPath)
+			}
+			runService("")
+			return nil
+		},
+		Commands: []*cli.Command{
+			{
+				Name:  "edit",
+				Usage: "编辑配置文件",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "配置文件路径"},
+				},
+				Action: func(c *cli.Context) error {
+					if path := c.String("config"); path != "" {
+						commands.EditAgentConfig(path, &agentConfig)
+					} else {
+						commands.EditAgentConfig(defaultConfigPath, &agentConfig)
+					}
+					return nil
+				},
+			},
+			{
+				Name:      "service",
+				Usage:     "服务操作",
+				UsageText: "<install/uninstall/start/stop/restart>",
+				Action: func(c *cli.Context) error {
+					if arg := c.Args().Get(0); arg != "" {
+						runService(arg)
+						return nil
+					}
+					return cli.Exit("必须指定一个参数", 1)
+				},
+			},
+		},
 	}
 
-	if showVersion {
-		fmt.Println(version)
-		os.Exit(0)
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal(err)
 	}
+}
 
-	if isEditConfig {
-		editAgentConfig(configPath)
-		os.Exit(0)
-	}
-
+func preRun(configPath string) {
 	// windows环境处理
 	if runtime.GOOS == "windows" {
 		hostArch, err := host.KernelArch()
@@ -158,23 +192,18 @@ func main() {
 	}
 
 	if err := agentConfig.Read(configPath); err != nil {
-		println(err)
-		os.Exit(1)
+		log.Fatalf("打开配置文件失败：%v", err)
 	}
 
 	monitor.InitConfig(&agentConfig)
 
 	if agentConfig.ClientSecret == "" {
-		println("ClientSecret 不能为空")
-		os.Exit(1)
+		log.Fatal("ClientSecret 不能为空")
 	}
 
 	if agentConfig.ReportDelay < 1 || agentConfig.ReportDelay > 4 {
-		println("report-delay 的区间为 1-4")
-		os.Exit(1)
+		log.Fatal("report-delay 的区间为 1-4")
 	}
-
-	runService(serviceAction)
 }
 
 func run() {
@@ -269,13 +298,14 @@ func runService(action string) {
 	svcConfig := &service.Config{
 		Name:             filepath.Base(executablePath),
 		DisplayName:      filepath.Base(executablePath),
-		Description:      "哪吒探针监控端",
+		Description:      "哪吒监控 Agent",
 		WorkingDirectory: filepath.Dir(executablePath),
 		Option:           winConfig,
 	}
 
-	prg := &program{
-		exit: make(chan struct{}),
+	prg := &commands.Program{
+		Exit: make(chan struct{}),
+		Run:  run,
 	}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
@@ -283,7 +313,7 @@ func runService(action string) {
 		run()
 		return
 	}
-	prg.service = s
+	prg.Service = s
 
 	if agentConfig.Debug {
 		serviceLogger, err := s.Logger(nil)
