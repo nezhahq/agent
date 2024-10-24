@@ -23,7 +23,6 @@ import (
 
 	"github.com/nezhahq/agent/model"
 	"github.com/nezhahq/agent/pkg/gpu"
-	gpustat "github.com/nezhahq/agent/pkg/gpu/stat"
 	"github.com/nezhahq/agent/pkg/util"
 )
 
@@ -349,21 +348,21 @@ func getConns(skipConnectionCount bool) (tcpConnCount, udpConnCount uint64) {
 	return tcpConnCount, udpConnCount
 }
 
-func updateGPUStat() float64 {
+func updateGPUStat() []float64 {
 	if agentConfig.GPU {
 		if statDataFetchAttempts["GPU"] < maxDeviceDataFetchAttempts {
-			gs, err := gpustat.GetGPUStat()
+			gs, err := gpu.GetGPUStat()
 			if err != nil {
 				statDataFetchAttempts["GPU"]++
 				printf("gpustat.GetGPUStat error: %v, attempt: %d", err, statDataFetchAttempts["GPU"])
-				return 0
+				return nil
 			} else {
 				statDataFetchAttempts["GPU"] = 0
 				return gs
 			}
 		}
 	}
-	return 0
+	return nil
 }
 
 func updateTemperatureStat() {
