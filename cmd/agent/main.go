@@ -317,7 +317,7 @@ func runService(action string, path string) {
 
 	var args []string
 	name := filepath.Base(executablePath)
-	if path != defaultConfigPath {
+	if path != defaultConfigPath && path != "" {
 		args = []string{"-c", path}
 		hex := fmt.Sprintf("%x", md5.Sum([]byte(path)))[:7]
 		name = fmt.Sprintf("%s-%s", name, hex)
