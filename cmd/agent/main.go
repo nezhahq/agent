@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -132,7 +133,7 @@ func main() {
 			} else {
 				preRun(defaultConfigPath)
 			}
-			runService("")
+			runService("", "")
 			return nil
 		},
 		Commands: []*cli.Command{
@@ -155,9 +156,18 @@ func main() {
 				Name:      "service",
 				Usage:     "服务操作",
 				UsageText: "<install/uninstall/start/stop/restart>",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "配置文件路径"},
+				},
 				Action: func(c *cli.Context) error {
 					if arg := c.Args().Get(0); arg != "" {
-						runService(arg)
+						if path := c.String("config"); path != "" {
+							ap, _ := filepath.Abs(path)
+							runService(arg, ap)
+						} else {
+							ap, _ := filepath.Abs(defaultConfigPath)
+							runService(arg, ap)
+						}
 						return nil
 					}
 					return cli.Exit("必须指定一个参数", 1)
@@ -300,14 +310,23 @@ func run() {
 	}
 }
 
-func runService(action string) {
+func runService(action string, path string) {
 	winConfig := map[string]interface{}{
 		"OnFailure": "restart",
 	}
 
+	var args []string
+	name := filepath.Base(executablePath)
+	if path != defaultConfigPath && path != "" {
+		args = []string{"-c", path}
+		hex := fmt.Sprintf("%x", md5.Sum([]byte(path)))[:7]
+		name = fmt.Sprintf("%s-%s", name, hex)
+	}
+
 	svcConfig := &service.Config{
-		Name:             filepath.Base(executablePath),
+		Name:             name,
 		DisplayName:      filepath.Base(executablePath),
+		Arguments:        args,
 		Description:      "哪吒监控 Agent",
 		WorkingDirectory: filepath.Dir(executablePath),
 		Option:           winConfig,
