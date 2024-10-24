@@ -1,9 +1,6 @@
 //go:build windows
 
-// Modified from https://github.com/shirou/gopsutil/blob/master/internal/common/common_windows.go
-// Original License: BSD-3-Clause
-
-package stat
+package gpu
 
 import (
 	"errors"
@@ -11,6 +8,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/jaypipes/ghw"
 	"golang.org/x/sys/windows"
 )
 
@@ -41,6 +39,41 @@ type PDH_FMT_COUNTERVALUE_DOUBLE struct {
 type PDH_FMT_COUNTERVALUE_ITEM_DOUBLE struct {
 	SzName   *uint16
 	FmtValue PDH_FMT_COUNTERVALUE_DOUBLE
+}
+
+func GetGPUModel() ([]string, error) {
+	var gpuModel []string
+	gi, err := ghw.GPU(ghw.WithDisableWarnings())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, card := range gi.GraphicsCards {
+		if card.DeviceInfo == nil {
+			return nil, errors.New("Cannot find device info")
+		}
+		gpuModel = append(gpuModel, card.DeviceInfo.Product.Name)
+	}
+
+	return gpuModel, nil
+}
+
+func GetGPUStat() ([]float64, error) {
+	counter, err := newWin32PerformanceCounter("gpu_utilization", "\\GPU Engine(*engtype_3D)\\Utilization Percentage")
+	if err != nil {
+		return nil, err
+	}
+	defer pdhCloseQuery.Call(uintptr(counter.Query))
+
+	values, err := getValue(8192, counter)
+	if err != nil {
+		return nil, err
+	}
+	tot := sumArray(values)
+	if tot > 100 {
+		tot = 100
+	}
+	return []float64{tot}, nil
 }
 
 // https://github.com/influxdata/telegraf/blob/master/plugins/inputs/win_perf_counters/performance_query.go
@@ -125,24 +158,6 @@ func getValue(initialBufSize uint32, counter *win32PerformanceCounter) ([]float6
 	}
 
 	return getCounterArrayValue(initialBufSize, counter)
-}
-
-func GetGPUStat() (float64, error) {
-	counter, err := newWin32PerformanceCounter("gpu_utilization", "\\GPU Engine(*engtype_3D)\\Utilization Percentage")
-	if err != nil {
-		return 0, err
-	}
-	defer pdhCloseQuery.Call(uintptr(counter.Query))
-
-	values, err := getValue(8192, counter)
-	if err != nil {
-		return 0, err
-	}
-	tot := sumArray(values)
-	if tot > 100 {
-		tot = 100
-	}
-	return tot, nil
 }
 
 func sumArray(arr []float64) float64 {
