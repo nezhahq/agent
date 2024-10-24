@@ -125,8 +125,9 @@ func GetGPUModel() ([]string, error) {
 	return util.RemoveDuplicate(models), nil
 }
 
-func FindUtilization(key, dictKey string) (int, error) {
-	return findUtilization(key, dictKey)
+func GetGPUStat() ([]float64, error) {
+	usage, err := findUtilization("PerformanceStatistics", "Device Utilization %")
+	return []float64{float64(usage)}, err
 }
 
 func findDevices(key string) ([]string, error) {
