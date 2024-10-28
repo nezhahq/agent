@@ -634,7 +634,10 @@ func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
 	var b bytes.Buffer
 	cmd.Stdout = &b
 	cmd.Env = os.Environ()
-	cmd.Start()
+	if err = cmd.Start(); err != nil {
+		result.Data = err.Error()
+		return
+	}
 	pg.AddProcess(cmd)
 	go func() {
 		select {
