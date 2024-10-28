@@ -3,86 +3,82 @@
 package processgroup
 
 import (
+	"fmt"
 	"os/exec"
-	"sync"
-	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 type ProcessExitGroup struct {
-	cmds []*exec.Cmd
+	cmds      []*exec.Cmd
+	jobHandle windows.Handle
+	procs     []windows.Handle
 }
 
-func NewProcessExitGroup() (ProcessExitGroup, error) {
-	return ProcessExitGroup{}, nil
+func NewProcessExitGroup() (*ProcessExitGroup, error) {
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{
+		BasicLimitInformation: windows.JOBOBJECT_BASIC_LIMIT_INFORMATION{
+			LimitFlags: windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+		},
+	}
+
+	_, err = windows.SetInformationJobObject(
+		job,
+		windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&info)),
+		uint32(unsafe.Sizeof(info)))
+
+	return &ProcessExitGroup{jobHandle: job}, nil
 }
 
-func (g *ProcessExitGroup) Dispose() []error {
-	var wg sync.WaitGroup
-	wg.Add(len(g.cmds))
-	errChan := make(chan error, len(g.cmds))
-	for _, c := range g.cmds {
-		go func(c *exec.Cmd) {
-			defer wg.Done()
-			if err := killChildProcess(c.Process.Pid); err != nil {
-				errChan <- err
-			}
-		}(c)
+func NewCommand(args string) *exec.Cmd {
+	cmd := exec.Command("cmd")
+	cmd.SysProcAttr = &windows.SysProcAttr{
+		CmdLine:       fmt.Sprintf("/c %s", args),
+		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP,
 	}
-
-	wg.Wait()
-	close(errChan)
-
-	errors := make([]error, 0, len(errChan))
-	for err := range errChan {
-		errors = append(errors, err)
-	}
-	return errors
+	return cmd
 }
 
 func (g *ProcessExitGroup) AddProcess(cmd *exec.Cmd) error {
+	proc, err := windows.OpenProcess(windows.PROCESS_TERMINATE|windows.PROCESS_SET_QUOTA|windows.PROCESS_SET_INFORMATION, false, uint32(cmd.Process.Pid))
+	if err != nil {
+		return err
+	}
+
+	g.procs = append(g.procs, proc)
 	g.cmds = append(g.cmds, cmd)
-	return nil
+
+	return windows.AssignProcessToJobObject(g.jobHandle, proc)
 }
 
-func killChildProcess(pid int) error {
-	snap, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, uint32(0))
-	if err != nil {
-		return err
-	}
-	defer syscall.CloseHandle(snap)
-
-	var pe syscall.ProcessEntry32
-	pe.Size = uint32(unsafe.Sizeof(pe))
-
-	if err := syscall.Process32First(snap, &pe); err != nil {
-		return err
-	}
-
-	// kill child processes first
-	for {
-		if pe.ParentProcessID == uint32(pid) {
-			child, err := syscall.OpenProcess(syscall.PROCESS_TERMINATE, false, pe.ProcessID)
-			if err == nil {
-				syscall.TerminateProcess(child, 1)
-				syscall.CloseHandle(child)
-			}
+func (g *ProcessExitGroup) Dispose() error {
+	defer func() {
+		windows.CloseHandle(g.jobHandle)
+		for _, proc := range g.procs {
+			windows.CloseHandle(proc)
 		}
+	}()
 
-		if err = syscall.Process32Next(snap, &pe); err != nil {
-			break
+	if err := windows.TerminateJobObject(g.jobHandle, 1); err != nil {
+		// Fall-back on error. Kill the main process only.
+		for _, cmd := range g.cmds {
+			cmd.Process.Kill()
 		}
-	}
-
-	proc, err := syscall.OpenProcess(syscall.PROCESS_TERMINATE|syscall.SYNCHRONIZE, false, uint32(pid))
-	if err != nil {
 		return err
 	}
-	defer syscall.CloseHandle(proc)
 
-	// kill the main process
-	syscall.TerminateProcess(proc, 1)
-	_, err = syscall.WaitForSingleObject(proc, syscall.INFINITE)
+	// wait for job to be terminated
+	status, err := windows.WaitForSingleObject(g.jobHandle, windows.INFINITE)
+	if status != windows.WAIT_OBJECT_0 {
+		return err
+	}
 
-	return err
+	return nil
 }

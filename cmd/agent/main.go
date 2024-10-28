@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -11,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -622,8 +622,7 @@ func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
 		return
 	}
 	startedAt := time.Now()
-	var cmd *exec.Cmd
-	var endCh = make(chan struct{})
+	endCh := make(chan struct{})
 	pg, err := processgroup.NewProcessExitGroup()
 	if err != nil {
 		// 进程组创建失败，直接退出
@@ -631,12 +630,11 @@ func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
 		return
 	}
 	timeout := time.NewTimer(time.Hour * 2)
-	if util.IsWindows() {
-		cmd = exec.Command("cmd", "/c", task.GetData()) // #nosec
-	} else {
-		cmd = exec.Command("sh", "-c", task.GetData()) // #nosec
-	}
+	cmd := processgroup.NewCommand(task.GetData())
+	var b bytes.Buffer
+	cmd.Stdout = &b
 	cmd.Env = os.Environ()
+	cmd.Start()
 	pg.AddProcess(cmd)
 	go func() {
 		select {
@@ -648,12 +646,11 @@ func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
 			timeout.Stop()
 		}
 	}()
-	output, err := cmd.Output()
-	if err != nil {
-		result.Data += fmt.Sprintf("%s\n%s", string(output), err.Error())
+	if err = cmd.Wait(); err != nil {
+		result.Data += fmt.Sprintf("%s\n%s", b.String(), err.Error())
 	} else {
 		close(endCh)
-		result.Data = string(output)
+		result.Data = b.String()
 		result.Successful = true
 	}
 	pg.Dispose()
