@@ -3,6 +3,7 @@
 package gpu
 
 import (
+	"context"
 	"fmt"
 	"unsafe"
 
@@ -117,7 +118,7 @@ func init() {
 	purego.RegisterLibFunc(&IOObjectRelease, ioKit, "IOObjectRelease")
 }
 
-func GetGPUModel() ([]string, error) {
+func GetHost(_ context.Context) ([]string, error) {
 	models, err := findDevices("model")
 	if err != nil {
 		return nil, err
@@ -125,7 +126,7 @@ func GetGPUModel() ([]string, error) {
 	return util.RemoveDuplicate(models), nil
 }
 
-func GetGPUStat() ([]float64, error) {
+func GetState(_ context.Context) ([]float64, error) {
 	usage, err := findUtilization("PerformanceStatistics", "Device Utilization %")
 	return []float64{float64(usage)}, err
 }

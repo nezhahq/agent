@@ -3,9 +3,10 @@
 package gpu
 
 import (
+	"context"
 	"errors"
 
-	"github.com/nezhahq/agent/pkg/gpu/vendor"
+	"github.com/nezhahq/agent/pkg/monitor/gpu/vendor"
 )
 
 const (
@@ -13,14 +14,14 @@ const (
 	vendorNVIDIA
 )
 
-var vendorType uint8
+var vendorType = getVendor()
 
-func init() {
+func getVendor() uint8 {
 	_, err := getNvidiaStat()
 	if err != nil {
-		vendorType = vendorAMD
+		return vendorAMD
 	} else {
-		vendorType = vendorNVIDIA
+		return vendorNVIDIA
 	}
 }
 
@@ -84,7 +85,7 @@ func getAMDHost() ([]string, error) {
 	return data, nil
 }
 
-func GetGPUModel() ([]string, error) {
+func GetHost(_ context.Context) ([]string, error) {
 	var gi []string
 	var err error
 
@@ -104,7 +105,7 @@ func GetGPUModel() ([]string, error) {
 	return gi, nil
 }
 
-func GetGPUStat() ([]float64, error) {
+func GetState(_ context.Context) ([]float64, error) {
 	var gs []float64
 	var err error
 

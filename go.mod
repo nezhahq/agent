@@ -7,10 +7,10 @@ require (
 	github.com/UserExistsError/conpty v0.1.4
 	github.com/artdarek/go-unzip v1.0.0
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/creack/pty v1.1.23
+	github.com/creack/pty v1.1.24
 	github.com/dean2021/goss v0.0.0-20230129073947-df90431348f1
 	github.com/ebi-yade/altsvc-go v0.1.1
-	github.com/ebitengine/purego v0.8.0
+	github.com/ebitengine/purego v0.8.1
 	github.com/hashicorp/go-uuid v1.0.3
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/jaypipes/ghw v0.12.0
@@ -20,12 +20,12 @@ require (
 	github.com/prometheus-community/pro-bing v0.4.1
 	github.com/quic-go/quic-go v0.40.1
 	github.com/refraction-networking/utls v1.6.3
-	github.com/shirou/gopsutil/v4 v4.24.9
+	github.com/shirou/gopsutil/v4 v4.24.10
 	github.com/spf13/viper v1.19.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/urfave/cli/v2 v2.27.5
 	golang.org/x/net v0.29.0
-	golang.org/x/sys v0.25.0
+	golang.org/x/sys v0.26.0
 	google.golang.org/grpc v1.64.1
 	google.golang.org/protobuf v1.34.2
 	sigs.k8s.io/yaml v1.4.0
