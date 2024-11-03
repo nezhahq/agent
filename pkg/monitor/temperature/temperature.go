@@ -3,8 +3,7 @@ package temperature
 import (
 	"context"
 	"fmt"
-	"slices"
-	"strings"
+	"sort"
 
 	"github.com/shirou/gopsutil/v4/sensors"
 
@@ -33,8 +32,8 @@ func GetState(_ context.Context) ([]model.SensorTemperature, error) {
 		}
 	}
 
-	slices.SortFunc(tempStat, func(a, b model.SensorTemperature) int {
-		return strings.Compare(a.Name, b.Name)
+	sort.Slice(tempStat, func(i, j int) bool {
+		return tempStat[i].Name < tempStat[j].Name
 	})
 
 	return tempStat, nil

@@ -23,7 +23,7 @@ var excludeNetInterfaces = map[string]bool{
 
 func GetState(ctx context.Context) ([]uint64, error) {
 	var netInTransfer, netOutTransfer uint64
-	nc, err := net.IOCounters(true)
+	nc, err := net.IOCountersWithContext(ctx, true)
 	if err != nil {
 		return nil, err
 	}
