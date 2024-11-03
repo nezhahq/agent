@@ -3,6 +3,7 @@
 package gpu
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -41,7 +42,7 @@ type PDH_FMT_COUNTERVALUE_ITEM_DOUBLE struct {
 	FmtValue PDH_FMT_COUNTERVALUE_DOUBLE
 }
 
-func GetGPUModel() ([]string, error) {
+func GetHost(_ context.Context) ([]string, error) {
 	var gpuModel []string
 	gi, err := ghw.GPU(ghw.WithDisableWarnings())
 	if err != nil {
@@ -58,7 +59,7 @@ func GetGPUModel() ([]string, error) {
 	return gpuModel, nil
 }
 
-func GetGPUStat() ([]float64, error) {
+func GetState(_ context.Context) ([]float64, error) {
 	counter, err := newWin32PerformanceCounter("gpu_utilization", "\\GPU Engine(*engtype_3D)\\Utilization Percentage")
 	if err != nil {
 		return nil, err

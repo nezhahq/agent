@@ -45,10 +45,10 @@ import (
 )
 
 var (
-	version           string
+	version           = monitor.Version // 来自于 GoReleaser 的版本号
 	arch              string
-	defaultConfigPath string
 	executablePath    string
+	defaultConfigPath = loadDefaultConfigPath()
 	client            pb.NezhaServiceClient
 	initialized       bool
 	dnsResolver       = &net.Resolver{PreferGo: true}
@@ -73,7 +73,7 @@ const (
 	networkTimeOut = time.Second * 5  // 普通网络超时
 )
 
-func init() {
+func setEnv() {
 	resolver.SetDefaultScheme("passthrough")
 	net.DefaultResolver.PreferGo = true // 使用 Go 内置的 DNS 解析器解析域名
 	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
@@ -102,17 +102,67 @@ func init() {
 		utls.HelloChrome_Auto, new(utls.Config),
 		http.DefaultTransport, nil, &headers,
 	)
+}
 
-	// 来自于 GoReleaser 的版本号
-	monitor.Version = version
-
+func loadDefaultConfigPath() string {
 	var err error
 	executablePath, err = os.Executable()
 	if err != nil {
-		panic(err)
+		return ""
+	}
+	return filepath.Join(filepath.Dir(executablePath), "config.yml")
+}
+
+func preRun(configPath string) error {
+	// init
+	setEnv()
+
+	if configPath == "" {
+		configPath = defaultConfigPath
 	}
 
-	defaultConfigPath = filepath.Join(filepath.Dir(executablePath), "config.yml")
+	// windows环境处理
+	if runtime.GOOS == "windows" {
+		hostArch, err := host.KernelArch()
+		if err != nil {
+			return err
+		}
+		switch hostArch {
+		case "i386", "i686":
+			hostArch = "386"
+		case "x86_64":
+			hostArch = "amd64"
+		case "aarch64":
+			hostArch = "arm64"
+		}
+		if arch != hostArch {
+			return fmt.Errorf("与当前系统不匹配，当前运行 %s_%s, 需要下载 %s_%s", runtime.GOOS, arch, runtime.GOOS, hostArch)
+		}
+	}
+
+	if err := agentConfig.Read(configPath); err != nil {
+		return fmt.Errorf("打开配置文件失败：%v", err)
+	}
+
+	monitor.InitConfig(&agentConfig)
+
+	if agentConfig.ClientSecret == "" {
+		return errors.New("ClientSecret 不能为空")
+	}
+
+	if agentConfig.ReportDelay < 1 || agentConfig.ReportDelay > 4 {
+		return errors.New("report-delay 的区间为 1-4")
+	}
+
+	if agentConfig.UUID == "" {
+		if uuid, err := uuid.GenerateUUID(); err == nil {
+			agentConfig.UUID = uuid
+			return agentConfig.Save()
+		} else {
+			return fmt.Errorf("生成 UUID 失败：%v", err)
+		}
+	}
+	return nil
 }
 
 func main() {
@@ -129,9 +179,13 @@ func main() {
 				return nil
 			}
 			if path := c.String("config"); path != "" {
-				preRun(path)
+				if err := preRun(path); err != nil {
+					return err
+				}
 			} else {
-				preRun(defaultConfigPath)
+				if err := preRun(""); err != nil {
+					return err
+				}
 			}
 			runService("", "")
 			return nil
@@ -178,51 +232,6 @@ func main() {
 
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
-	}
-}
-
-func preRun(configPath string) {
-	// windows环境处理
-	if runtime.GOOS == "windows" {
-		hostArch, err := host.KernelArch()
-		if err != nil {
-			panic(err)
-		}
-		if hostArch == "i386" {
-			hostArch = "386"
-		}
-		if hostArch == "i686" || hostArch == "ia64" || hostArch == "x86_64" {
-			hostArch = "amd64"
-		}
-		if hostArch == "aarch64" {
-			hostArch = "arm64"
-		}
-		if arch != hostArch {
-			panic(fmt.Sprintf("与当前系统不匹配，当前运行 %s_%s, 需要下载 %s_%s", runtime.GOOS, arch, runtime.GOOS, hostArch))
-		}
-	}
-
-	if err := agentConfig.Read(configPath); err != nil {
-		log.Fatalf("打开配置文件失败：%v", err)
-	}
-
-	monitor.InitConfig(&agentConfig)
-
-	if agentConfig.ClientSecret == "" {
-		log.Fatal("ClientSecret 不能为空")
-	}
-
-	if agentConfig.ReportDelay < 1 || agentConfig.ReportDelay > 4 {
-		log.Fatal("report-delay 的区间为 1-4")
-	}
-
-	if agentConfig.UUID == "" {
-		if uuid, err := uuid.GenerateUUID(); err == nil {
-			agentConfig.UUID = uuid
-			agentConfig.Save()
-		} else {
-			log.Fatalf("生成 UUID 失败：%v", err)
-		}
 	}
 }
 
