@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/blang/semver"
@@ -66,6 +67,8 @@ var (
 		Timeout:   time.Second * 30,
 		Transport: &http3.RoundTripper{},
 	}
+
+	hostStatus = new(atomic.Bool)
 )
 
 const (
@@ -423,7 +426,7 @@ func doTask(task *pb.Task) {
 		handleNATTask(task)
 		return
 	case model.TaskTypeReportHostInfo:
-		reportState(time.Time{})
+		reportHost()
 		return
 	case model.TaskTypeFM:
 		handleFMTask(task)
@@ -459,20 +462,35 @@ func reportState(lastReportHostInfo time.Time) time.Time {
 			printf("reportState error: %v", err)
 			time.Sleep(delayWhenError)
 		}
+
 		// 每10分钟重新获取一次硬件信息
 		if lastReportHostInfo.Before(time.Now().Add(-10*time.Minute)) || monitor.GeoQueryIPChanged {
-			monitor.GeoQueryIPChanged = false
-			lastReportHostInfo = time.Now()
-			client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
-			if monitor.GeoQueryIP != "" {
-				geoip, err := client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.GeoQueryIP})
-				if err == nil {
-					monitor.CachedCountryCode = geoip.GetCountryCode()
-				}
+			if reportHost() {
+				monitor.GeoQueryIPChanged = false
+				lastReportHostInfo = time.Now()
 			}
 		}
 	}
 	return lastReportHostInfo
+}
+
+func reportHost() bool {
+	if !hostStatus.CompareAndSwap(false, true) {
+		return false
+	}
+	defer hostStatus.Store(false)
+
+	if client != nil && initialized {
+		client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
+		if monitor.GeoQueryIP != "" {
+			geoip, err := client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.GeoQueryIP})
+			if err == nil {
+				monitor.CachedCountryCode = geoip.GetCountryCode()
+			}
+		}
+	}
+
+	return true
 }
 
 // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
