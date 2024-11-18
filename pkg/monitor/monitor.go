@@ -57,7 +57,7 @@ var statDataFetchAttempts = map[uint8]uint8{
 }
 
 var (
-	updateTempStatus = new(atomic.Int32)
+	updateTempStatus = new(atomic.Bool)
 )
 
 func InitConfig(cfg *model.AgentConfig) {
@@ -236,10 +236,10 @@ func getConns() (tcpConnCount, udpConnCount uint64) {
 }
 
 func updateTemperatureStat() {
-	if !updateTempStatus.CompareAndSwap(0, 1) {
+	if !updateTempStatus.CompareAndSwap(false, true) {
 		return
 	}
-	defer updateTempStatus.Store(0)
+	defer updateTempStatus.Store(false)
 
 	stat := tryStat(context.Background(), Temperatures, temperature.GetState)
 	temperatureStat = stat
