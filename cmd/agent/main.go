@@ -69,6 +69,7 @@ var (
 	}
 
 	hostStatus = new(atomic.Bool)
+	ipStatus   = new(atomic.Bool)
 )
 
 const (
@@ -252,10 +253,9 @@ func run() {
 			}
 		}()
 	}
+
 	// 上报服务器信息
 	go reportStateDaemon()
-	// 更新IP信息
-	go monitor.UpdateIP(agentConfig.UseIPv6CountryCode, agentConfig.IPReportPeriod)
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentConfig.DisableAutoUpdate {
@@ -427,6 +427,7 @@ func doTask(task *pb.Task) {
 		return
 	case model.TaskTypeReportHostInfo:
 		reportHost()
+		reportGeoIP(agentConfig.UseIPv6CountryCode)
 		return
 	case model.TaskTypeFM:
 		handleFMTask(task)
@@ -442,17 +443,17 @@ func doTask(task *pb.Task) {
 
 // reportStateDaemon 向server上报状态信息
 func reportStateDaemon() {
-	var lastReportHostInfo time.Time
+	var lastReportHostInfo, lastReportIPInfo time.Time
 	var err error
 	defer printf("reportState exit %v => %v", time.Now(), err)
 	for {
 		// 为了更准确的记录时段流量，inited 后再上传状态信息
-		lastReportHostInfo = reportState(lastReportHostInfo)
+		lastReportHostInfo, lastReportIPInfo = reportState(lastReportHostInfo, lastReportIPInfo)
 		time.Sleep(time.Second * time.Duration(agentConfig.ReportDelay))
 	}
 }
 
-func reportState(lastReportHostInfo time.Time) time.Time {
+func reportState(host, ip time.Time) (time.Time, time.Time) {
 	if client != nil && initialized {
 		monitor.TrackNetworkSpeed()
 		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
@@ -464,14 +465,20 @@ func reportState(lastReportHostInfo time.Time) time.Time {
 		}
 
 		// 每10分钟重新获取一次硬件信息
-		if lastReportHostInfo.Before(time.Now().Add(-10*time.Minute)) || monitor.GeoQueryIPChanged {
+		if host.Before(time.Now().Add(-10 * time.Minute)) {
 			if reportHost() {
-				monitor.GeoQueryIPChanged = false
-				lastReportHostInfo = time.Now()
+				host = time.Now()
+			}
+		}
+
+		// 更新IP信息
+		if time.Since(ip) > time.Second*time.Duration(agentConfig.IPReportPeriod) {
+			if reportGeoIP(agentConfig.UseIPv6CountryCode) {
+				ip = time.Now()
 			}
 		}
 	}
-	return lastReportHostInfo
+	return host, ip
 }
 
 func reportHost() bool {
@@ -482,11 +489,26 @@ func reportHost() bool {
 
 	if client != nil && initialized {
 		client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
-		if monitor.GeoQueryIP != "" {
-			geoip, err := client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.GeoQueryIP})
+	}
+
+	return true
+}
+
+func reportGeoIP(use6 bool) bool {
+	if !ipStatus.CompareAndSwap(false, true) {
+		return false
+	}
+	defer ipStatus.Store(false)
+
+	if client != nil && initialized {
+		pbg := monitor.FetchIP(use6)
+		if pbg != nil && monitor.GeoQueryIPChanged {
+			geoip, err := client.ReportGeoIP(context.Background(), pbg)
 			if err == nil {
 				monitor.CachedCountryCode = geoip.GetCountryCode()
 			}
+		} else {
+			return false
 		}
 	}
 
