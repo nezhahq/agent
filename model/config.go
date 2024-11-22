@@ -53,6 +53,8 @@ func (c *AgentConfig) Read(path string) error {
 
 	if c.IPReportPeriod == 0 {
 		c.IPReportPeriod = 1800
+	} else if c.IPReportPeriod < 10 {
+		c.IPReportPeriod = 10
 	}
 
 	return nil

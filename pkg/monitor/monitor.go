@@ -116,7 +116,6 @@ func GetHost() *model.Host {
 
 	cachedBootTime = time.Unix(int64(hi.BootTime), 0)
 
-	ret.IP = CachedIP
 	ret.Version = Version
 
 	return &ret

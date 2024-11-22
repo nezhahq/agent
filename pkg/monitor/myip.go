@@ -1,7 +1,6 @@
 package monitor
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nezhahq/agent/pkg/util"
+	pb "github.com/nezhahq/agent/proto"
 )
 
 var (
@@ -17,54 +17,47 @@ var (
 		"https://dash.cloudflare.com/cdn-cgi/trace",
 		"https://developers.cloudflare.com/cdn-cgi/trace",
 	}
-	CachedIP, GeoQueryIP, CachedCountryCode string
-	GeoQueryIPChanged                       bool = true
-	httpClientV4                                 = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
-	httpClientV6                                 = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
+	GeoQueryIP, CachedCountryCode string
+	GeoQueryIPChanged             bool = true
+	httpClientV4                       = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
+	httpClientV6                       = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
 )
 
 // UpdateIP 按设置时间间隔更新IP地址的缓存
-func UpdateIP(useIPv6CountryCode bool, period uint32) {
-	for {
-		util.Println(agentConfig.Debug, "正在更新本地缓存IP信息")
-		wg := new(sync.WaitGroup)
-		wg.Add(2)
-		var ipv4, ipv6 string
-		go func() {
-			defer wg.Done()
-			ipv4 = fetchIP(cfList, false)
-		}()
-		go func() {
-			defer wg.Done()
-			ipv6 = fetchIP(cfList, true)
-		}()
-		wg.Wait()
+func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
+	util.Println(agentConfig.Debug, "正在更新本地缓存IP信息")
+	wg := new(sync.WaitGroup)
+	wg.Add(2)
+	var ipv4, ipv6 string
+	go func() {
+		defer wg.Done()
+		ipv4 = fetchIP(cfList, false)
+	}()
+	go func() {
+		defer wg.Done()
+		ipv6 = fetchIP(cfList, true)
+	}()
+	wg.Wait()
 
-		if ipv4 == "" && ipv6 == "" {
-			if period > 60 {
-				time.Sleep(time.Minute)
-			} else {
-				time.Sleep(time.Second * time.Duration(period))
-			}
-			continue
-		}
-
-		if ipv4 == "" || ipv6 == "" {
-			CachedIP = fmt.Sprintf("%s%s", ipv4, ipv6)
-		} else {
-			CachedIP = fmt.Sprintf("%s/%s", ipv4, ipv6)
-		}
-
-		if ipv6 != "" && (useIPv6CountryCode || ipv4 == "") {
-			GeoQueryIPChanged = GeoQueryIP != ipv6 || GeoQueryIPChanged
-			GeoQueryIP = ipv6
-		} else {
-			GeoQueryIPChanged = GeoQueryIP != ipv4 || GeoQueryIPChanged
-			GeoQueryIP = ipv4
-		}
-
-		time.Sleep(time.Second * time.Duration(period))
+	if ipv6 != "" && (useIPv6CountryCode || ipv4 == "") {
+		GeoQueryIPChanged = GeoQueryIP != ipv6 || GeoQueryIPChanged
+		GeoQueryIP = ipv6
+	} else {
+		GeoQueryIPChanged = GeoQueryIP != ipv4 || GeoQueryIPChanged
+		GeoQueryIP = ipv4
 	}
+
+	if GeoQueryIP != "" {
+		return &pb.GeoIP{
+			Use6: useIPv6CountryCode,
+			Ip: &pb.IP{
+				Ipv4: ipv4,
+				Ipv6: ipv6,
+			},
+		}
+	}
+
+	return nil
 }
 
 func fetchIP(servers []string, isV6 bool) string {
