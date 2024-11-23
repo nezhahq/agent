@@ -28,13 +28,13 @@ func GetState(ctx context.Context) ([]uint64, error) {
 		return nil, err
 	}
 
-	allowList := excludeNetInterfaces
-	if m, ok := ctx.Value(NICKey).(map[string]bool); ok && len(m) > 0 {
-		allowList = m
-	}
+	allowList, _ := ctx.Value(NICKey).(map[string]bool)
 
 	for _, v := range nc {
-		if !allowList[v.Name] {
+		if excludeNetInterfaces[v.Name] && !allowList[v.Name] {
+			continue
+		}
+		if len(allowList) > 0 && !allowList[v.Name] {
 			continue
 		}
 		netInTransfer += v.BytesRecv
