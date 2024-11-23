@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ebi-yade/altsvc-go"
@@ -55,6 +56,8 @@ type AgentCliParam struct {
 	IPReportPeriod        uint32 // 上报IP间隔
 	UseIPv6CountryCode    bool   // 默认优先展示IPv6旗帜
 	UseGiteeToUpgrade     bool   // 强制从Gitee获取更新
+	DisableNat            bool   // 关闭内网穿透
+	DisableSendQuery      bool   // 关闭发送TCP/ICMP/HTTP请求
 }
 
 var (
@@ -90,6 +93,8 @@ var (
 		Timeout:   time.Second * 30,
 		Transport: &http3.RoundTripper{},
 	}
+
+	hostStatus = new(atomic.Bool)
 )
 
 const (
@@ -143,6 +148,8 @@ func init() {
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.SkipConnectionCount, "skip-conn", false, "不监控连接数")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.SkipProcsCount, "skip-procs", false, "不监控进程数")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableCommandExecute, "disable-command-execute", false, "禁止在此机器上执行命令")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableNat, "disable-nat", false, "禁止此机器内网穿透")
+	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableSendQuery, "disable-send-query", false, "禁止此机器发送TCP/ICMP/HTTP请求")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableAutoUpdate, "disable-auto-update", false, "禁用自动升级")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.DisableForceUpdate, "disable-force-update", false, "禁用强制升级")
 	agentCmd.PersistentFlags().BoolVar(&agentCliParam.UseIPv6CountryCode, "use-ipv6-countrycode", false, "使用IPv6的位置上报")
@@ -390,7 +397,7 @@ func doTask(task *pb.Task) {
 		handleNATTask(task)
 		return
 	case model.TaskTypeReportHostInfo:
-		reportState(time.Time{})
+		reportHost()
 		return
 	case model.TaskTypeFM:
 		handleFMTask(task)
@@ -428,17 +435,31 @@ func reportState(lastReportHostInfo time.Time) time.Time {
 		}
 		// 每10分钟重新获取一次硬件信息
 		if lastReportHostInfo.Before(time.Now().Add(-10 * time.Minute)) {
-			lastReportHostInfo = time.Now()
-			client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
-			if monitor.GeoQueryIP != "" {
-				geoip, err := client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.GeoQueryIP})
-				if err == nil {
-					monitor.CachedCountryCode = geoip.GetCountryCode()
-				}
+			if reportHost() {
+				lastReportHostInfo = time.Now()
 			}
 		}
 	}
 	return lastReportHostInfo
+}
+
+func reportHost() bool {
+	if !hostStatus.CompareAndSwap(false, true) {
+		return false
+	}
+	defer hostStatus.Store(false)
+
+	if client != nil && initialized {
+		client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
+		if monitor.GeoQueryIP != "" {
+			geoip, err := client.LookupGeoIP(context.Background(), &pb.GeoIP{Ip: monitor.GeoQueryIP})
+			if err == nil {
+				monitor.CachedCountryCode = geoip.GetCountryCode()
+			}
+		}
+	}
+
+	return true
 }
 
 // // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
@@ -473,6 +494,11 @@ func reportState(lastReportHostInfo time.Time) time.Time {
 // }
 
 func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
+	if agentCliParam.DisableSendQuery {
+		result.Data = "此 Agent 已禁止发送请求"
+		return
+	}
+
 	host, port, err := net.SplitHostPort(task.GetData())
 	if err != nil {
 		result.Data = err.Error()
@@ -499,6 +525,11 @@ func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
 }
 
 func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
+	if agentCliParam.DisableSendQuery {
+		result.Data = "此 Agent 已禁止发送请求"
+		return
+	}
+
 	ipAddr, err := lookupIP(task.GetData())
 	if err != nil {
 		result.Data = err.Error()
@@ -526,6 +557,11 @@ func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
 }
 
 func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
+	if agentCliParam.DisableSendQuery {
+		result.Data = "此 Agent 已禁止发送请求"
+		return
+	}
+
 	start := time.Now()
 	taskUrl := task.GetData()
 	resp, err := httpClient.Get(taskUrl)
@@ -739,6 +775,11 @@ func handleTerminalTask(task *pb.Task) {
 }
 
 func handleNATTask(task *pb.Task) {
+	if agentCliParam.DisableNat {
+		println("此 Agent 已禁止内网穿透")
+		return
+	}
+
 	var nat model.TaskNAT
 	err := util.Json.Unmarshal([]byte(task.GetData()), &nat)
 	if err != nil {

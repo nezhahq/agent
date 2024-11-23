@@ -67,7 +67,7 @@ var statDataFetchAttempts = map[string]int{
 }
 
 var (
-	updateTempStatus = new(atomic.Int32)
+	updateTempStatus = new(atomic.Bool)
 )
 
 func InitConfig(cfg *model.AgentConfig) {
@@ -367,10 +367,10 @@ func updateGPUStat() float64 {
 }
 
 func updateTemperatureStat() {
-	if !updateTempStatus.CompareAndSwap(0, 1) {
+	if !updateTempStatus.CompareAndSwap(false, true) {
 		return
 	}
-	defer updateTempStatus.Store(0)
+	defer updateTempStatus.Store(false)
 
 	if statDataFetchAttempts["Temperatures"] < maxDeviceDataFetchAttempts {
 		temperatures, err := sensors.SensorsTemperatures()
