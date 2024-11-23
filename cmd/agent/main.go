@@ -254,9 +254,6 @@ func run() {
 		}()
 	}
 
-	// 上报服务器信息
-	go reportStateDaemon()
-
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentConfig.DisableAutoUpdate {
 		doSelfUpdate(true)
@@ -309,6 +306,9 @@ func run() {
 		}
 		cancel()
 		initialized = true
+
+		errCh := make(chan error)
+
 		// 执行 Task
 		tasks, err := client.RequestTask(context.Background(), monitor.GetHost().PB())
 		if err != nil {
@@ -316,8 +316,26 @@ func run() {
 			retry()
 			continue
 		}
-		err = receiveTasks(tasks)
-		printf("receiveTasks exit to main: %v", err)
+		go receiveTasks(tasks, errCh)
+
+		reportState, err := client.ReportSystemState(context.Background())
+		if err != nil {
+			printf("上报状态信息失败: %v", err)
+			retry()
+			continue
+		}
+		go reportStateDaemon(reportState, errCh)
+
+		for i := 0; i < 2; i++ {
+			err = <-errCh
+			if i == 0 {
+				tasks.CloseSend()
+				reportState.CloseSend()
+			}
+			printf("worker exit to main: %v", err)
+		}
+		close(errCh)
+
 		retry()
 	}
 }
@@ -384,14 +402,14 @@ func runService(action string, path string) {
 	}
 }
 
-func receiveTasks(tasks pb.NezhaService_RequestTaskClient) error {
+func receiveTasks(tasks pb.NezhaService_RequestTaskClient, errCh chan<- error) {
+	var task *pb.Task
 	var err error
-	defer printf("receiveTasks exit %v => %v", time.Now(), err)
 	for {
-		var task *pb.Task
 		task, err = tasks.Recv()
 		if err != nil {
-			return err
+			errCh <- fmt.Errorf("receiveTasks exit: %v", err)
+			return
 		}
 		go func() {
 			defer func() {
@@ -427,6 +445,7 @@ func doTask(task *pb.Task) {
 		return
 	case model.TaskTypeReportHostInfo:
 		reportHost()
+		monitor.GeoQueryIPChanged = true
 		reportGeoIP(agentConfig.UseIPv6CountryCode)
 		return
 	case model.TaskTypeFM:
@@ -442,43 +461,42 @@ func doTask(task *pb.Task) {
 }
 
 // reportStateDaemon 向server上报状态信息
-func reportStateDaemon() {
+func reportStateDaemon(stateClient pb.NezhaService_ReportSystemStateClient, errCh chan<- error) {
 	var lastReportHostInfo, lastReportIPInfo time.Time
 	var err error
-	defer printf("reportState exit %v => %v", time.Now(), err)
 	for {
 		// 为了更准确的记录时段流量，inited 后再上传状态信息
-		lastReportHostInfo, lastReportIPInfo = reportState(lastReportHostInfo, lastReportIPInfo)
+		lastReportHostInfo, lastReportIPInfo, err = reportState(stateClient, lastReportHostInfo, lastReportIPInfo)
+		if err != nil {
+			errCh <- fmt.Errorf("reportStateDaemon exit: %v", err)
+			return
+		}
 		time.Sleep(time.Second * time.Duration(agentConfig.ReportDelay))
 	}
 }
 
-func reportState(host, ip time.Time) (time.Time, time.Time) {
-	if client != nil && initialized {
-		monitor.TrackNetworkSpeed()
-		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
-		_, err := client.ReportSystemState(timeOutCtx, monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB())
-		cancel()
-		if err != nil {
-			printf("reportState error: %v", err)
-			time.Sleep(delayWhenError)
-		}
-
-		// 每10分钟重新获取一次硬件信息
-		if host.Before(time.Now().Add(-10 * time.Minute)) {
-			if reportHost() {
-				host = time.Now()
-			}
-		}
-
-		// 更新IP信息
-		if time.Since(ip) > time.Second*time.Duration(agentConfig.IPReportPeriod) {
-			if reportGeoIP(agentConfig.UseIPv6CountryCode) {
-				ip = time.Now()
-			}
+func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip time.Time) (time.Time, time.Time, error) {
+	monitor.TrackNetworkSpeed()
+	if err := statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB()); err != nil {
+		return host, ip, err
+	}
+	_, err := statClient.Recv()
+	if err != nil {
+		return host, ip, err
+	}
+	// 每10分钟重新获取一次硬件信息
+	if host.Before(time.Now().Add(-10 * time.Minute)) {
+		if reportHost() {
+			host = time.Now()
 		}
 	}
-	return host, ip
+	// 更新IP信息
+	if time.Since(ip) > time.Second*time.Duration(agentConfig.IPReportPeriod) {
+		if reportGeoIP(agentConfig.UseIPv6CountryCode) {
+			ip = time.Now()
+		}
+	}
+	return host, ip, nil
 }
 
 func reportHost() bool {
@@ -506,6 +524,7 @@ func reportGeoIP(use6 bool) bool {
 			geoip, err := client.ReportGeoIP(context.Background(), pbg)
 			if err == nil {
 				monitor.CachedCountryCode = geoip.GetCountryCode()
+				monitor.GeoQueryIPChanged = false
 			}
 		} else {
 			return false
