@@ -11,6 +11,8 @@ import (
 	opty "github.com/creack/pty"
 )
 
+var _ IPty = (*Pty)(nil)
+
 var defaultShells = []string{"zsh", "fish", "bash", "sh"}
 
 type Pty struct {
@@ -79,5 +81,3 @@ func (pty *Pty) Close() error {
 	}
 	return pty.killChildProcess(pty.cmd)
 }
-
-var _ IPty = &Pty{}
