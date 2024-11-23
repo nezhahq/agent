@@ -575,7 +575,7 @@ func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
 		result.Data = err.Error()
 		return
 	}
-	if strings.Contains(ipAddr, ":") {
+	if strings.IndexByte(ipAddr, ':') != -1 {
 		ipAddr = fmt.Sprintf("[%s]", ipAddr)
 	}
 	printf("TCP-Ping Task: Pinging %s:%s", ipAddr, port)

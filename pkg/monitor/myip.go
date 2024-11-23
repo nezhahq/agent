@@ -91,11 +91,11 @@ func fetchIP(servers []string, isV6 bool) string {
 				}
 			}
 			// 没取到 v6 IP
-			if isV6 && !strings.Contains(newIP, ":") {
+			if isV6 && strings.IndexByte(newIP, ':') == -1 {
 				continue
 			}
 			// 没取到 v4 IP
-			if !isV6 && !strings.Contains(newIP, ".") {
+			if !isV6 && strings.IndexByte(newIP, '.') == -1 {
 				continue
 			}
 			ip = newIP

@@ -72,12 +72,12 @@ func resolveIP(addr string, ipv6 bool) (string, error) {
 
 	for i := 0; i < len(res); i++ {
 		ip := res[i].String()
-		if strings.Contains(ip, ".") && !ipv6 {
+		if strings.IndexByte(ip, '.') != -1 && !ipv6 {
 			ipv4Resolved = true
 			url[0] = ip
 			break
 		}
-		if strings.Contains(ip, ":") && ipv6 {
+		if strings.IndexByte(ip, ':') != -1 && ipv6 {
 			ipv6Resolved = true
 			url[0] = "[" + ip + "]"
 			break
