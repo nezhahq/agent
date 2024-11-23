@@ -10,6 +10,8 @@ import (
 	"github.com/UserExistsError/conpty"
 )
 
+var _ IPty = (*Pty)(nil)
+
 type Pty struct {
 	tty *conpty.ConPty
 }
@@ -61,5 +63,3 @@ func (pty *Pty) Close() error {
 	}
 	return nil
 }
-
-var _ IPty = &Pty{}
