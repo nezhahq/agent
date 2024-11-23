@@ -492,9 +492,8 @@ func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip ti
 	}
 	// 更新IP信息
 	if time.Since(ip) > time.Second*time.Duration(agentConfig.IPReportPeriod) {
-		if reportGeoIP(agentConfig.UseIPv6CountryCode) {
-			ip = time.Now()
-		}
+		reportGeoIP(agentConfig.UseIPv6CountryCode)
+		ip = time.Now()
 	}
 	return host, ip, nil
 }
