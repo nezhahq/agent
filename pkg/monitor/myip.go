@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nezhahq/agent/pkg/logger"
 	"github.com/nezhahq/agent/pkg/util"
 	pb "github.com/nezhahq/agent/proto"
 )
@@ -25,7 +26,7 @@ var (
 
 // UpdateIP 按设置时间间隔更新IP地址的缓存
 func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
-	util.Println(agentConfig.Debug, "正在更新本地缓存IP信息")
+	logger.DefaultLogger.Println("正在更新本地缓存IP信息")
 	wg := new(sync.WaitGroup)
 	wg.Add(2)
 	var ipv4, ipv6 string
