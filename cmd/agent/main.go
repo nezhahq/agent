@@ -18,9 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/blang/semver"
 	"github.com/ebi-yade/altsvc-go"
-	"github.com/nezhahq/go-github-selfupdate/selfupdate"
 	"github.com/nezhahq/service"
 	ping "github.com/prometheus-community/pro-bing"
 	"github.com/quic-go/quic-go/http3"
@@ -234,14 +232,14 @@ func run() {
 	go monitor.UpdateIP(agentCliParam.UseIPv6CountryCode, agentCliParam.IPReportPeriod)
 
 	// 定时检查更新
-	if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
-		doSelfUpdate(true)
-		go func() {
-			for range time.Tick(20 * time.Minute) {
-				doSelfUpdate(true)
-			}
-		}()
-	}
+	// if _, err := semver.Parse(version); err == nil && !agentCliParam.DisableAutoUpdate {
+	// 	doSelfUpdate(true)
+	// 	go func() {
+	// 		for range time.Tick(20 * time.Minute) {
+	// 			doSelfUpdate(true)
+	// 		}
+	// 	}()
+	// }
 
 	var err error
 	var conn *grpc.ClientConn
@@ -390,8 +388,8 @@ func doTask(task *pb.Task) {
 		handleTcpPingTask(task, &result)
 	case model.TaskTypeCommand:
 		handleCommandTask(task, &result)
-	case model.TaskTypeUpgrade:
-		handleUpgradeTask(task, &result)
+	// case model.TaskTypeUpgrade:
+	// 	handleUpgradeTask(task, &result)
 	case model.TaskTypeTerminalGRPC:
 		handleTerminalTask(task)
 		return
@@ -464,36 +462,36 @@ func reportHost() bool {
 	return true
 }
 
-// doSelfUpdate 执行更新检查 如果更新成功则会结束进程
-func doSelfUpdate(useLocalVersion bool) {
-	v := semver.MustParse("0.1.0")
-	if useLocalVersion {
-		v = semver.MustParse(version)
-	}
-	printf("检查更新: %v", v)
-	var latest *selfupdate.Release
-	var err error
-	if monitor.CachedCountryCode != "cn" && !agentCliParam.UseGiteeToUpgrade {
-		latest, err = selfupdate.UpdateSelf(v, "nezhahq/agent")
-	} else {
-		latest, err = selfupdate.UpdateSelfGitee(v, "naibahq/agent")
-	}
-	if err != nil {
-		printf("更新失败: %v", err)
-		return
-	}
-	if !latest.Version.Equals(v) {
-		printf("已经更新至: %v, 正在结束进程", latest.Version)
-		os.Exit(1)
-	}
-}
+// // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
+// func doSelfUpdate(useLocalVersion bool) {
+// 	v := semver.MustParse("0.1.0")
+// 	if useLocalVersion {
+// 		v = semver.MustParse(version)
+// 	}
+// 	printf("检查更新: %v", v)
+// 	var latest *selfupdate.Release
+// 	var err error
+// 	if monitor.CachedCountryCode != "cn" && !agentCliParam.UseGiteeToUpgrade {
+// 		latest, err = selfupdate.UpdateSelf(v, "nezhahq/agent")
+// 	} else {
+// 		latest, err = selfupdate.UpdateSelfGitee(v, "naibahq/agent")
+// 	}
+// 	if err != nil {
+// 		printf("更新失败: %v", err)
+// 		return
+// 	}
+// 	if !latest.Version.Equals(v) {
+// 		printf("已经更新至: %v, 正在结束进程", latest.Version)
+// 		os.Exit(1)
+// 	}
+// }
 
-func handleUpgradeTask(*pb.Task, *pb.TaskResult) {
-	if agentCliParam.DisableForceUpdate {
-		return
-	}
-	doSelfUpdate(false)
-}
+// func handleUpgradeTask(*pb.Task, *pb.TaskResult) {
+// 	if agentCliParam.DisableForceUpdate {
+// 		return
+// 	}
+// 	doSelfUpdate(false)
+// }
 
 func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
 	if agentCliParam.DisableSendQuery {
