@@ -37,6 +37,7 @@ import (
 	"github.com/nezhahq/agent/cmd/agent/commands"
 	"github.com/nezhahq/agent/model"
 	fm "github.com/nezhahq/agent/pkg/fm"
+	"github.com/nezhahq/agent/pkg/logger"
 	"github.com/nezhahq/agent/pkg/monitor"
 	"github.com/nezhahq/agent/pkg/processgroup"
 	"github.com/nezhahq/agent/pkg/pty"
@@ -70,6 +71,11 @@ var (
 
 	hostStatus = new(atomic.Bool)
 	ipStatus   = new(atomic.Bool)
+)
+
+var (
+	println = logger.DefaultLogger.Println
+	printf  = logger.DefaultLogger.Printf
 )
 
 const (
@@ -374,13 +380,12 @@ func runService(action string, path string) {
 	}
 	prg.Service = s
 
-	if agentConfig.Debug {
-		serviceLogger, err := s.Logger(nil)
-		if err != nil {
-			printf("获取 service logger 时出错: %+v", err)
-		} else {
-			util.Logger = serviceLogger
-		}
+	serviceLogger, err := s.Logger(nil)
+	if err != nil {
+		printf("获取 service logger 时出错: %+v", err)
+		logger.InitDefaultLogger(agentConfig.Debug, service.ConsoleLogger)
+	} else {
+		logger.InitDefaultLogger(agentConfig.Debug, serviceLogger)
 	}
 
 	if action == "install" {
@@ -398,7 +403,7 @@ func runService(action string, path string) {
 
 	err = s.Run()
 	if err != nil {
-		util.Logger.Error(err)
+		logger.DefaultLogger.Error(err)
 	}
 }
 
@@ -930,14 +935,6 @@ func handleFMTask(task *pb.Task) {
 		}
 		fmc.DoTask(remoteData)
 	}
-}
-
-func println(v ...interface{}) {
-	util.Println(agentConfig.Debug, v...)
-}
-
-func printf(format string, v ...interface{}) {
-	util.Printf(agentConfig.Debug, format, v...)
 }
 
 func generateQueue(start int, size int) []int {
