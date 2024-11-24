@@ -11,6 +11,7 @@ import (
 	"github.com/shirou/gopsutil/v4/process"
 
 	"github.com/nezhahq/agent/model"
+	"github.com/nezhahq/agent/pkg/logger"
 	"github.com/nezhahq/agent/pkg/monitor/conn"
 	"github.com/nezhahq/agent/pkg/monitor/cpu"
 	"github.com/nezhahq/agent/pkg/monitor/disk"
@@ -18,12 +19,13 @@ import (
 	"github.com/nezhahq/agent/pkg/monitor/load"
 	"github.com/nezhahq/agent/pkg/monitor/nic"
 	"github.com/nezhahq/agent/pkg/monitor/temperature"
-	"github.com/nezhahq/agent/pkg/util"
 )
 
 var (
 	Version     string
 	agentConfig *model.AgentConfig
+
+	printf = logger.DefaultLogger.Printf
 )
 
 var (
@@ -278,8 +280,4 @@ func tryStat[T any](ctx context.Context, typ uint8, f hostStateFunc[T]) T {
 		}
 	}
 	return val
-}
-
-func printf(format string, v ...interface{}) {
-	util.Printf(agentConfig.Debug, format, v...)
 }
