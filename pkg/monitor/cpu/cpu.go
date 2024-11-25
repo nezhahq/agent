@@ -19,7 +19,7 @@ func GetHost(ctx context.Context) ([]string, error) {
 
 	cpuModelCount := make(map[string]int)
 	for _, c := range ci {
-		cpuModelCount[c.ModelName]++
+		cpuModelCount[c.ModelName] += int(c.Cores)
 	}
 
 	var cpuType string
@@ -27,14 +27,9 @@ func GetHost(ctx context.Context) ([]string, error) {
 		cpuType = t
 	}
 
-	var ch []string
-	u := len(ci) > 1
+	ch := make([]string, 0, len(cpuModelCount))
 	for model, count := range cpuModelCount {
-		if u {
-			ch = append(ch, fmt.Sprintf("%s %d %s Core", model, count, cpuType))
-		} else {
-			ch = append(ch, fmt.Sprintf("%s %d %s Core", model, ci[0].Cores, cpuType))
-		}
+		ch = append(ch, fmt.Sprintf("%s %d %s Core", model, count, cpuType))
 	}
 
 	return ch, nil
