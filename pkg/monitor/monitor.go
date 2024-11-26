@@ -172,7 +172,9 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 		ret.Temperatures = temperatureStat
 	}
 
-	ret.GPU = tryStat(context.Background(), GPU, gpu.GetState)
+	if agentConfig.GPU {
+		ret.GPU = tryStat(context.Background(), GPU, gpu.GetState)
+	}
 
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
