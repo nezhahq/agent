@@ -29,7 +29,10 @@ type AgentConfig struct {
 	InsecureTLS                 bool            `mapstructure:"insecure_tls" json:"insecure_tls"`                       // 是否禁用证书检查
 	UseIPv6CountryCode          bool            `mapstructure:"use_ipv6_country_code" json:"use_ipv6_country_code"`     // 默认优先展示IPv6旗帜
 	UseGiteeToUpgrade           bool            `mapstructure:"use_gitee_to_upgrade" json:"use_gitee_to_upgrade"`       // 强制从Gitee获取更新
+	DisableNat                  bool            `mapstructure:"disable_nat" json:"disable_nat"`                         // 关闭内网穿透
+	DisableSendQuery            bool            `mapstructure:"disable_send_query" json:"disable_send_query"`           // 关闭发送TCP/ICMP/HTTP请求
 	IPReportPeriod              uint32          `mapstructure:"ip_report_period" json:"ip_report_period"`               // IP上报周期
+	CustomIPApi                 []string        `mapstructure:"custom_ip_api" json:"custom_ip_api"`                     // 自定义 IP API
 
 	v *viper.Viper
 }

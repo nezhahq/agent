@@ -18,6 +18,7 @@ var (
 		"https://dash.cloudflare.com/cdn-cgi/trace",
 		"https://developers.cloudflare.com/cdn-cgi/trace",
 	}
+	CustomEndpoints               []string
 	GeoQueryIP, CachedCountryCode string
 	GeoQueryIPChanged             bool = true
 	httpClientV4                       = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
@@ -32,11 +33,19 @@ func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
 	var ipv4, ipv6 string
 	go func() {
 		defer wg.Done()
-		ipv4 = fetchIP(cfList, false)
+		if len(CustomEndpoints) > 0 {
+			ipv4 = fetchIP(CustomEndpoints, false)
+		} else {
+			ipv4 = fetchIP(cfList, false)
+		}
 	}()
 	go func() {
 		defer wg.Done()
-		ipv6 = fetchIP(cfList, true)
+		if len(CustomEndpoints) > 0 {
+			ipv6 = fetchIP(CustomEndpoints, true)
+		} else {
+			ipv6 = fetchIP(cfList, true)
+		}
 	}()
 	wg.Wait()
 
