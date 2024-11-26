@@ -155,6 +155,7 @@ func preRun(configPath string) error {
 	}
 
 	monitor.InitConfig(&agentConfig)
+	monitor.CustomEndpoints = agentConfig.CustomIPApi
 
 	if agentConfig.ClientSecret == "" {
 		return errors.New("ClientSecret 不能为空")
@@ -570,6 +571,11 @@ func handleUpgradeTask(*pb.Task, *pb.TaskResult) {
 }
 
 func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
+	if agentConfig.DisableSendQuery {
+		result.Data = "This server has disabled query sending"
+		return
+	}
+
 	host, port, err := net.SplitHostPort(task.GetData())
 	if err != nil {
 		result.Data = err.Error()
@@ -596,6 +602,11 @@ func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
 }
 
 func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
+	if agentConfig.DisableSendQuery {
+		result.Data = "This server has disabled query sending"
+		return
+	}
+
 	ipAddr, err := lookupIP(task.GetData())
 	if err != nil {
 		result.Data = err.Error()
@@ -623,6 +634,11 @@ func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
 }
 
 func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
+	if agentConfig.DisableSendQuery {
+		result.Data = "This server has disabled query sending"
+		return
+	}
+
 	start := time.Now()
 	taskUrl := task.GetData()
 	resp, err := httpClient.Get(taskUrl)
@@ -836,6 +852,11 @@ func handleTerminalTask(task *pb.Task) {
 }
 
 func handleNATTask(task *pb.Task) {
+	if agentConfig.DisableNat {
+		println("This server has disabled NAT traversal")
+		return
+	}
+
 	var nat model.TaskNAT
 	err := util.Json.Unmarshal([]byte(task.GetData()), &nat)
 	if err != nil {
