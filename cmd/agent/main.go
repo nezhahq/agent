@@ -21,7 +21,6 @@ import (
 
 	"github.com/blang/semver"
 	"github.com/ebi-yade/altsvc-go"
-	"github.com/hashicorp/go-uuid"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
 	"github.com/nezhahq/service"
 	ping "github.com/prometheus-community/pro-bing"
@@ -151,28 +150,12 @@ func preRun(configPath string) error {
 	}
 
 	if err := agentConfig.Read(configPath); err != nil {
-		return fmt.Errorf("打开配置文件失败：%v", err)
+		return fmt.Errorf("init config failed: %v", err)
 	}
 
 	monitor.InitConfig(&agentConfig)
 	monitor.CustomEndpoints = agentConfig.CustomIPApi
 
-	if agentConfig.ClientSecret == "" {
-		return errors.New("ClientSecret 不能为空")
-	}
-
-	if agentConfig.ReportDelay < 1 || agentConfig.ReportDelay > 4 {
-		return errors.New("report-delay 的区间为 1-4")
-	}
-
-	if agentConfig.UUID == "" {
-		if uuid, err := uuid.GenerateUUID(); err == nil {
-			agentConfig.UUID = uuid
-			return agentConfig.Save()
-		} else {
-			return fmt.Errorf("生成 UUID 失败：%v", err)
-		}
-	}
 	return nil
 }
 
@@ -181,14 +164,9 @@ func main() {
 		Usage:   "哪吒监控 Agent",
 		Version: version,
 		Flags: []cli.Flag{
-			&cli.BoolFlag{Name: "version", Aliases: []string{"v"}, Usage: "查看当前版本号"},
 			&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "配置文件路径"},
 		},
 		Action: func(c *cli.Context) error {
-			if c.Bool("version") {
-				fmt.Println(c.App.Version)
-				return nil
-			}
 			if path := c.String("config"); path != "" {
 				if err := preRun(path); err != nil {
 					return err
@@ -391,7 +369,10 @@ func runService(action string, path string) {
 
 	if action == "install" {
 		initName := s.Platform()
-		println("Init system is:", initName)
+		if err := agentConfig.Read(path); err != nil {
+			log.Fatalf("init config failed: %v", err)
+		}
+		printf("Init system is: %s", initName)
 	}
 
 	if len(action) != 0 {
