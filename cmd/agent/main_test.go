@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -27,6 +28,10 @@ func Test(t *testing.T) {
 }
 
 func TestLookupIP(t *testing.T) {
+	if ci := os.Getenv("CI"); ci != "" { // skip if test on CI
+		return
+	}
+
 	ip, err := lookupIP("www.google.com")
 	fmt.Printf("ip: %v, err: %v\n", ip, err)
 	if err != nil {
