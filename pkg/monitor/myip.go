@@ -93,12 +93,19 @@ func fetchIP(servers []string, isV6 bool) string {
 				continue
 			}
 			resp.Body.Close()
-			lines := strings.Split(string(body), "\n")
+
+			bodyStr := string(body)
 			var newIP string
-			for _, line := range lines {
-				if strings.HasPrefix(line, "ip=") {
-					newIP = strings.TrimPrefix(line, "ip=")
-					break
+
+			if !strings.Contains(bodyStr, "ip=") {
+				newIP = strings.TrimSpace(strings.ReplaceAll(bodyStr, "\n", ""))
+			} else {
+				lines := strings.Split(bodyStr, "\n")
+				for _, line := range lines {
+					if strings.HasPrefix(line, "ip=") {
+						newIP = strings.TrimPrefix(line, "ip=")
+						break
+					}
 				}
 			}
 			// 没取到 v6 IP
