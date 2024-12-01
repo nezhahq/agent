@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -93,20 +94,28 @@ func fetchIP(servers []string, isV6 bool) string {
 				continue
 			}
 			resp.Body.Close()
-			lines := strings.Split(string(body), "\n")
+
+			bodyStr := string(body)
 			var newIP string
-			for _, line := range lines {
-				if strings.HasPrefix(line, "ip=") {
-					newIP = strings.TrimPrefix(line, "ip=")
-					break
+
+			if !strings.Contains(bodyStr, "ip=") {
+				newIP = strings.TrimSpace(strings.ReplaceAll(bodyStr, "\n", ""))
+			} else {
+				lines := strings.Split(bodyStr, "\n")
+				for _, line := range lines {
+					if strings.HasPrefix(line, "ip=") {
+						newIP = strings.TrimPrefix(line, "ip=")
+						break
+					}
 				}
 			}
+			parsedIP := net.ParseIP(newIP)
 			// 没取到 v6 IP
-			if isV6 && strings.IndexByte(newIP, ':') == -1 {
+			if isV6 && (parsedIP == nil || parsedIP.To4() != nil) {
 				continue
 			}
 			// 没取到 v4 IP
-			if !isV6 && strings.IndexByte(newIP, '.') == -1 {
+			if !isV6 && (parsedIP == nil || parsedIP.To4() == nil) {
 				continue
 			}
 			ip = newIP
