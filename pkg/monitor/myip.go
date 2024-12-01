@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -108,12 +109,13 @@ func fetchIP(servers []string, isV6 bool) string {
 					}
 				}
 			}
+			parsedIP := net.ParseIP(newIP)
 			// 没取到 v6 IP
-			if isV6 && strings.IndexByte(newIP, ':') == -1 {
+			if isV6 && (parsedIP == nil || parsedIP.To4() != nil) {
 				continue
 			}
 			// 没取到 v4 IP
-			if !isV6 && strings.IndexByte(newIP, '.') == -1 {
+			if !isV6 && (parsedIP == nil || parsedIP.To4() == nil) {
 				continue
 			}
 			ip = newIP
