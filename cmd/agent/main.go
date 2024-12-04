@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/nezhahq/agent/cmd/agent/commands"
@@ -273,7 +274,11 @@ func run() {
 		} else {
 			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		conn, err = grpc.NewClient(agentConfig.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
+		conn, err = grpc.NewClient(agentConfig.Server, securityOption, grpc.WithKeepaliveParams(
+			keepalive.ClientParameters{
+				Time:                time.Second * 30,
+				PermitWithoutStream: true,
+			}), grpc.WithPerRPCCredentials(&auth))
 		if err != nil {
 			printf("与面板建立连接失败: %v", err)
 			retry()
@@ -437,8 +442,6 @@ func doTask(task *pb.Task) {
 		return
 	case model.TaskTypeFM:
 		handleFMTask(task)
-		return
-	case model.TaskTypeKeepalive:
 		return
 	default:
 		printf("不支持的任务: %v", task)
