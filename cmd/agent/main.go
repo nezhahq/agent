@@ -484,8 +484,9 @@ func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip ti
 	}
 	// 更新IP信息
 	if time.Since(ip) > time.Second*time.Duration(agentConfig.IPReportPeriod) {
-		reportGeoIP(agentConfig.UseIPv6CountryCode)
-		ip = time.Now()
+		if reportGeoIP(agentConfig.UseIPv6CountryCode) {
+			ip = time.Now()
+		}
 	}
 	return host, ip, nil
 }
@@ -511,14 +512,18 @@ func reportGeoIP(use6 bool) bool {
 
 	if client != nil && initialized {
 		pbg := monitor.FetchIP(use6)
-		if pbg != nil && monitor.GeoQueryIPChanged {
-			geoip, err := client.ReportGeoIP(context.Background(), pbg)
-			if err == nil {
-				monitor.CachedCountryCode = geoip.GetCountryCode()
-				monitor.GeoQueryIPChanged = false
-			}
-		} else {
+		if pbg == nil {
 			return false
+		}
+
+		if !monitor.GeoQueryIPChanged {
+			return true
+		}
+
+		geoip, err := client.ReportGeoIP(context.Background(), pbg)
+		if err == nil {
+			monitor.CachedCountryCode = geoip.GetCountryCode()
+			monitor.GeoQueryIPChanged = false
 		}
 	}
 
