@@ -8,7 +8,7 @@ const (
 	TaskTypeCommand
 	TaskTypeTerminal
 	TaskTypeUpgrade
-	TaskTypeKeepaliveDeprecated
+	TaskTypeKeepalive
 	TaskTypeTerminalGRPC
 	TaskTypeNAT
 	TaskTypeReportHostInfo
