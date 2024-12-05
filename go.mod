@@ -18,8 +18,8 @@ require (
 	github.com/knadh/koanf/providers/env v1.0.0
 	github.com/knadh/koanf/providers/file v1.1.2
 	github.com/knadh/koanf/v2 v2.1.2
-	github.com/nezhahq/go-github-selfupdate v0.0.0-20240713123605-d560a87d03a0
-	github.com/nezhahq/service v0.0.0-20240704142721-eba37f9cc709
+	github.com/nezhahq/go-github-selfupdate v0.0.0-20241205090552-0b56e412e750
+	github.com/nezhahq/service v0.0.0-20241205090409-40f63a48da4e
 	github.com/prometheus-community/pro-bing v0.4.1
 	github.com/quic-go/quic-go v0.40.1
 	github.com/refraction-networking/utls v1.6.3
@@ -27,7 +27,7 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	github.com/urfave/cli/v2 v2.27.5
 	golang.org/x/net v0.29.0
-	golang.org/x/sys v0.26.0
+	golang.org/x/sys v0.28.0
 	google.golang.org/grpc v1.64.1
 	google.golang.org/protobuf v1.34.2
 	sigs.k8s.io/yaml v1.4.0
