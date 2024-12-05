@@ -330,10 +330,9 @@ func runService(action string, path string) {
 		"OnFailure": "restart",
 	}
 
-	var args []string
+	args := []string{"-c", path}
 	name := filepath.Base(executablePath)
 	if path != defaultConfigPath && path != "" {
-		args = []string{"-c", path}
 		hex := fmt.Sprintf("%x", md5.Sum([]byte(path)))[:7]
 		name = fmt.Sprintf("%s-%s", name, hex)
 	}
