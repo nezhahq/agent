@@ -21,10 +21,8 @@ type ServiceLogger struct {
 
 func InitDefaultLogger(enabled bool, logger service.Logger) {
 	loggerOnce.Do(func() {
-		DefaultLogger = &ServiceLogger{
-			enabled: enabled,
-			logger:  logger,
-		}
+		DefaultLogger.enabled = enabled
+		DefaultLogger.logger = logger
 	})
 }
 

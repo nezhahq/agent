@@ -31,7 +31,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/nezhahq/agent/cmd/agent/commands"
@@ -81,6 +80,8 @@ var (
 const (
 	delayWhenError = time.Second * 10 // Agent 重连间隔
 	networkTimeOut = time.Second * 5  // 普通网络超时
+
+	binaryName = "nezha-agent"
 )
 
 func setEnv() {
@@ -274,11 +275,7 @@ func run() {
 		} else {
 			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		conn, err = grpc.NewClient(agentConfig.Server, securityOption, grpc.WithKeepaliveParams(
-			keepalive.ClientParameters{
-				Time:                time.Second * 30,
-				PermitWithoutStream: true,
-			}), grpc.WithPerRPCCredentials(&auth))
+		conn, err = grpc.NewClient(agentConfig.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
 		if err != nil {
 			printf("与面板建立连接失败: %v", err)
 			retry()
@@ -300,13 +297,13 @@ func run() {
 		errCh := make(chan error)
 
 		// 执行 Task
-		tasks, err := client.RequestTask(context.Background(), monitor.GetHost().PB())
+		tasks, err := client.RequestTask(context.Background())
 		if err != nil {
 			printf("请求任务失败: %v", err)
 			retry()
 			continue
 		}
-		go receiveTasks(tasks, errCh)
+		go receiveTasksDaemon(tasks, errCh)
 
 		reportState, err := client.ReportSystemState(context.Background())
 		if err != nil {
@@ -335,10 +332,9 @@ func runService(action string, path string) {
 		"OnFailure": "restart",
 	}
 
-	var args []string
+	args := []string{"-c", path}
 	name := filepath.Base(executablePath)
 	if path != defaultConfigPath && path != "" {
-		args = []string{"-c", path}
 		hex := fmt.Sprintf("%x", md5.Sum([]byte(path)))[:7]
 		name = fmt.Sprintf("%s-%s", name, hex)
 	}
@@ -394,7 +390,7 @@ func runService(action string, path string) {
 	}
 }
 
-func receiveTasks(tasks pb.NezhaService_RequestTaskClient, errCh chan<- error) {
+func receiveTasksDaemon(tasks pb.NezhaService_RequestTaskClient, errCh chan<- error) {
 	var task *pb.Task
 	var err error
 	for {
@@ -403,18 +399,23 @@ func receiveTasks(tasks pb.NezhaService_RequestTaskClient, errCh chan<- error) {
 			errCh <- fmt.Errorf("receiveTasks exit: %v", err)
 			return
 		}
-		go func() {
+		go func(t *pb.Task) {
 			defer func() {
 				if err := recover(); err != nil {
 					println("task panic", task, err)
 				}
 			}()
-			doTask(task)
-		}()
+			result := doTask(t)
+			if result != nil {
+				if err := tasks.Send(result); err != nil {
+					printf("send task result error: %v", err)
+				}
+			}
+		}(task)
 	}
 }
 
-func doTask(task *pb.Task) {
+func doTask(task *pb.Task) *pb.TaskResult {
 	var result pb.TaskResult
 	result.Id = task.GetId()
 	result.Type = task.GetType()
@@ -431,23 +432,24 @@ func doTask(task *pb.Task) {
 		handleUpgradeTask(task, &result)
 	case model.TaskTypeTerminalGRPC:
 		handleTerminalTask(task)
-		return
+		return nil
 	case model.TaskTypeNAT:
 		handleNATTask(task)
-		return
+		return nil
 	case model.TaskTypeReportHostInfo:
 		reportHost()
 		monitor.GeoQueryIPChanged = true
 		reportGeoIP(agentConfig.UseIPv6CountryCode)
-		return
+		return nil
 	case model.TaskTypeFM:
 		handleFMTask(task)
-		return
+		return nil
+	case model.TaskTypeKeepalive:
 	default:
 		printf("不支持的任务: %v", task)
-		return
+		return nil
 	}
-	client.ReportTask(context.Background(), &result)
+	return &result
 }
 
 // reportStateDaemon 向server上报状态信息
@@ -533,9 +535,23 @@ func doSelfUpdate(useLocalVersion bool) {
 	var latest *selfupdate.Release
 	var err error
 	if monitor.CachedCountryCode != "cn" && !agentConfig.UseGiteeToUpgrade {
-		latest, err = selfupdate.UpdateSelf(v, "nezhahq/agent")
+		updater, erru := selfupdate.NewUpdater(selfupdate.Config{
+			BinaryName: binaryName,
+		})
+		if erru != nil {
+			printf("更新失败: %v", erru)
+			return
+		}
+		latest, err = updater.UpdateSelf(v, "nezhahq/agent")
 	} else {
-		latest, err = selfupdate.UpdateSelfGitee(v, "naibahq/agent")
+		updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
+			BinaryName: binaryName,
+		})
+		if erru != nil {
+			printf("更新失败: %v", erru)
+			return
+		}
+		latest, err = updater.UpdateSelf(v, "naibahq/agent")
 	}
 	if err != nil {
 		printf("更新失败: %v", err)
@@ -592,11 +608,11 @@ func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
 	}
 
 	ipAddr, err := lookupIP(task.GetData())
+	printf("ICMP-Ping Task: Pinging %s(%s)", task.GetData(), ipAddr)
 	if err != nil {
 		result.Data = err.Error()
 		return
 	}
-	printf("ICMP-Ping Task: Pinging %s", ipAddr)
 	pinger, err := ping.NewPinger(ipAddr)
 	if err == nil {
 		pinger.SetPrivileged(true)
@@ -622,10 +638,10 @@ func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 		result.Data = "This server has disabled query sending"
 		return
 	}
-
 	start := time.Now()
 	taskUrl := task.GetData()
 	resp, err := httpClient.Get(taskUrl)
+	printf("HTTP-GET Task: %s", taskUrl)
 	checkHttpResp(taskUrl, start, resp, err, result)
 }
 
@@ -786,6 +802,8 @@ func handleTerminalTask(task *pb.Task) {
 		return
 	}
 
+	go ioStreamKeepAlive(remoteIO)
+
 	tty, err := pty.Start()
 	if err != nil {
 		printf("Terminal pty.Start失败 %v", err)
@@ -800,8 +818,8 @@ func handleTerminalTask(task *pb.Task) {
 	println("terminal init", terminal.StreamID)
 
 	go func() {
+		buf := make([]byte, 10240)
 		for {
-			buf := make([]byte, 10240)
 			read, err := tty.Read(buf)
 			if err != nil {
 				remoteIO.Send(&pb.IOStreamData{Data: []byte(err.Error())})
@@ -818,7 +836,7 @@ func handleTerminalTask(task *pb.Task) {
 			return
 		}
 		if len(remoteData.Data) == 0 {
-			return
+			continue
 		}
 		switch remoteData.Data[0] {
 		case 0:
@@ -861,6 +879,8 @@ func handleNATTask(task *pb.Task) {
 		printf("NAT 发送StreamID失败: %v", err)
 		return
 	}
+
+	go ioStreamKeepAlive(remoteIO)
 
 	conn, err := net.Dial("tcp", nat.Host)
 	if err != nil {
@@ -923,6 +943,8 @@ func handleFMTask(task *pb.Task) {
 		return
 	}
 
+	go ioStreamKeepAlive(remoteIO)
+
 	defer func() {
 		errCloseSend := remoteIO.CloseSend()
 		println("FM exit", fmTask.StreamID, nil, errCloseSend)
@@ -936,7 +958,7 @@ func handleFMTask(task *pb.Task) {
 			return
 		}
 		if len(remoteData.Data) == 0 {
-			return
+			continue
 		}
 		fmc.DoTask(remoteData)
 	}
@@ -966,4 +988,14 @@ func lookupIP(hostOrIp string) (string, error) {
 		return ips[0].IP.String(), nil
 	}
 	return hostOrIp, nil
+}
+
+func ioStreamKeepAlive(stream pb.NezhaService_IOStreamClient) {
+	for {
+		if err := stream.Send(&pb.IOStreamData{Data: []byte{}}); err != nil {
+			printf("IOStream KeepAlive 失败: %v", err)
+			return
+		}
+		time.Sleep(time.Second * 30)
+	}
 }
