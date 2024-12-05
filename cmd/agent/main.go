@@ -512,18 +512,18 @@ func reportGeoIP(use6 bool) bool {
 
 	if client != nil && initialized {
 		pbg := monitor.FetchIP(use6)
-		if pbg != nil {
-			if !monitor.GeoQueryIPChanged {
-				return true
-			}
-
-			geoip, err := client.ReportGeoIP(context.Background(), pbg)
-			if err == nil {
-				monitor.CachedCountryCode = geoip.GetCountryCode()
-				monitor.GeoQueryIPChanged = false
-			}
-		} else {
+		if pbg == nil {
 			return false
+		}
+
+		if !monitor.GeoQueryIPChanged {
+			return true
+		}
+
+		geoip, err := client.ReportGeoIP(context.Background(), pbg)
+		if err == nil {
+			monitor.CachedCountryCode = geoip.GetCountryCode()
+			monitor.GeoQueryIPChanged = false
 		}
 	}
 
