@@ -80,6 +80,8 @@ var (
 const (
 	delayWhenError = time.Second * 10 // Agent 重连间隔
 	networkTimeOut = time.Second * 5  // 普通网络超时
+
+	binaryName = "nezha-agent"
 )
 
 func setEnv() {
@@ -533,9 +535,23 @@ func doSelfUpdate(useLocalVersion bool) {
 	var latest *selfupdate.Release
 	var err error
 	if monitor.CachedCountryCode != "cn" && !agentConfig.UseGiteeToUpgrade {
-		latest, err = selfupdate.UpdateSelf(v, "nezhahq/agent")
+		updater, erru := selfupdate.NewUpdater(selfupdate.Config{
+			BinaryName: binaryName,
+		})
+		if erru != nil {
+			printf("更新失败: %v", erru)
+			return
+		}
+		latest, err = updater.UpdateSelf(v, "nezhahq/agent")
 	} else {
-		latest, err = selfupdate.UpdateSelfGitee(v, "naibahq/agent")
+		updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
+			BinaryName: binaryName,
+		})
+		if erru != nil {
+			printf("更新失败: %v", erru)
+			return
+		}
+		latest, err = updater.UpdateSelf(v, "naibahq/agent")
 	}
 	if err != nil {
 		printf("更新失败: %v", err)
