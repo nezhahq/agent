@@ -438,8 +438,16 @@ func doTask(task *pb.Task) *pb.TaskResult {
 		return nil
 	case model.TaskTypeReportHostInfo:
 		reportHost()
-		monitor.GeoQueryIPChanged = true
-		reportGeoIP(agentConfig.UseIPv6CountryCode)
+		go func() {
+			monitor.GeoQueryIPChanged = true
+			for {
+				reported := reportGeoIP(agentConfig.UseIPv6CountryCode)
+				if reported {
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
+		}()
 		return nil
 	case model.TaskTypeFM:
 		handleFMTask(task)
