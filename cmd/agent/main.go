@@ -311,6 +311,7 @@ func run() {
 			retry()
 			continue
 		}
+		monitor.GeoQueryIP = ""
 		go reportStateDaemon(reportState, errCh)
 
 		for i := 0; i < 2; i++ {
@@ -438,16 +439,6 @@ func doTask(task *pb.Task) *pb.TaskResult {
 		return nil
 	case model.TaskTypeReportHostInfo:
 		reportHost()
-		go func() {
-			monitor.GeoQueryIPChanged = true
-			for {
-				reported := reportGeoIP(agentConfig.UseIPv6CountryCode)
-				if reported {
-					break
-				}
-				time.Sleep(1 * time.Second)
-			}
-		}()
 		return nil
 	case model.TaskTypeFM:
 		handleFMTask(task)
