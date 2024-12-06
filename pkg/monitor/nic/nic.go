@@ -3,6 +3,7 @@ package nic
 import (
 	"context"
 
+	"github.com/cloudflare/ahocorasick"
 	"github.com/shirou/gopsutil/v4/net"
 )
 
@@ -10,16 +11,13 @@ type NICKeyType string
 
 const NICKey NICKeyType = "nic"
 
-var excludeNetInterfaces = map[string]bool{
-	"lo":     true,
-	"tun":    true,
-	"docker": true,
-	"veth":   true,
-	"br-":    true,
-	"vmbr":   true,
-	"vnet":   true,
-	"kube":   true,
-}
+var (
+	excludeNetInterfaces = []string{
+		"lo", "tun", "docker", "veth", "br-", "vmbr", "vnet", "kube",
+	}
+
+	defaultMatcher = ahocorasick.NewStringMatcher(excludeNetInterfaces)
+)
 
 func GetState(ctx context.Context) ([]uint64, error) {
 	var netInTransfer, netOutTransfer uint64
@@ -31,7 +29,7 @@ func GetState(ctx context.Context) ([]uint64, error) {
 	allowList, _ := ctx.Value(NICKey).(map[string]bool)
 
 	for _, v := range nc {
-		if excludeNetInterfaces[v.Name] && !allowList[v.Name] {
+		if defaultMatcher.Contains([]byte(v.Name)) && !allowList[v.Name] {
 			continue
 		}
 		if len(allowList) > 0 && !allowList[v.Name] {
