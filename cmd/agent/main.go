@@ -257,7 +257,7 @@ func run() {
 	}
 
 	var err error
-	var dashboardBootTimeReceipt *pb.Unit64Receipt
+	var dashboardBootTimeReceipt *pb.Uint64Receipt
 	var conn *grpc.ClientConn
 
 	retry := func() {
@@ -320,12 +320,6 @@ func run() {
 			continue
 		}
 		go reportStateDaemon(reportState, errCh)
-
-		go func() {
-			agentConfig.IPReportPeriod = 1000
-			time.Sleep(time.Second * 5)
-			conn.Close()
-		}()
 
 		for i := 0; i < 2; i++ {
 			err = <-errCh
