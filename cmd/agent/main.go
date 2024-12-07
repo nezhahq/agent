@@ -46,15 +46,23 @@ import (
 )
 
 var (
-	version           = monitor.Version // 来自于 GoReleaser 的版本号
-	arch              string
-	executablePath    string
-	defaultConfigPath = loadDefaultConfigPath()
-	client            pb.NezhaServiceClient
-	initialized       bool
-	dnsResolver       = &net.Resolver{PreferGo: true}
-	agentConfig       model.AgentConfig
-	httpClient        = &http.Client{
+	version               = monitor.Version // 来自于 GoReleaser 的版本号
+	arch                  string
+	executablePath        string
+	defaultConfigPath     = loadDefaultConfigPath()
+	client                pb.NezhaServiceClient
+	initialized           bool
+	agentConfig           model.AgentConfig
+	prevDashboardBootTime uint64 // 面板上次启动时间
+	geoipReported         bool   // 在面板重启后是否上报成功过 GeoIP
+	lastReportHostInfo    time.Time
+	lastReportIPInfo      time.Time
+
+	hostStatus = new(atomic.Bool)
+	ipStatus   = new(atomic.Bool)
+
+	dnsResolver = &net.Resolver{PreferGo: true}
+	httpClient  = &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -67,9 +75,6 @@ var (
 		Timeout:   time.Second * 30,
 		Transport: &http3.RoundTripper{},
 	}
-
-	hostStatus = new(atomic.Bool)
-	ipStatus   = new(atomic.Bool)
 )
 
 var (
@@ -252,6 +257,7 @@ func run() {
 	}
 
 	var err error
+	var dashboardBootTimeReceipt *pb.Unit64Receipt
 	var conn *grpc.ClientConn
 
 	retry := func() {
@@ -282,9 +288,9 @@ func run() {
 			continue
 		}
 		client = pb.NewNezhaServiceClient(conn)
-		// 第一步注册
+
 		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
-		_, err = client.ReportSystemInfo(timeOutCtx, monitor.GetHost().PB())
+		dashboardBootTimeReceipt, err = client.ReportSystemInfo2(timeOutCtx, monitor.GetHost().PB())
 		if err != nil {
 			printf("上报系统信息失败: %v", err)
 			cancel()
@@ -292,6 +298,8 @@ func run() {
 			continue
 		}
 		cancel()
+		geoipReported = geoipReported && prevDashboardBootTime > 0 && dashboardBootTimeReceipt.GetData() == prevDashboardBootTime
+		prevDashboardBootTime = dashboardBootTimeReceipt.GetData()
 		initialized = true
 
 		errCh := make(chan error)
@@ -312,6 +320,12 @@ func run() {
 			continue
 		}
 		go reportStateDaemon(reportState, errCh)
+
+		go func() {
+			agentConfig.IPReportPeriod = 1000
+			time.Sleep(time.Second * 5)
+			conn.Close()
+		}()
 
 		for i := 0; i < 2; i++ {
 			err = <-errCh
@@ -436,19 +450,6 @@ func doTask(task *pb.Task) *pb.TaskResult {
 	case model.TaskTypeNAT:
 		handleNATTask(task)
 		return nil
-	case model.TaskTypeReportHostInfo:
-		reportHost()
-		go func() {
-			monitor.GeoQueryIPChanged = true
-			for {
-				reported := reportGeoIP(agentConfig.UseIPv6CountryCode)
-				if reported {
-					break
-				}
-				time.Sleep(1 * time.Second)
-			}
-		}()
-		return nil
 	case model.TaskTypeFM:
 		handleFMTask(task)
 		return nil
@@ -462,10 +463,8 @@ func doTask(task *pb.Task) *pb.TaskResult {
 
 // reportStateDaemon 向server上报状态信息
 func reportStateDaemon(stateClient pb.NezhaService_ReportSystemStateClient, errCh chan<- error) {
-	var lastReportHostInfo, lastReportIPInfo time.Time
 	var err error
 	for {
-		// 为了更准确的记录时段流量，inited 后再上传状态信息
 		lastReportHostInfo, lastReportIPInfo, err = reportState(stateClient, lastReportHostInfo, lastReportIPInfo)
 		if err != nil {
 			errCh <- fmt.Errorf("reportStateDaemon exit: %v", err)
@@ -476,13 +475,15 @@ func reportStateDaemon(stateClient pb.NezhaService_ReportSystemStateClient, errC
 }
 
 func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip time.Time) (time.Time, time.Time, error) {
-	monitor.TrackNetworkSpeed()
-	if err := statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB()); err != nil {
-		return host, ip, err
-	}
-	_, err := statClient.Recv()
-	if err != nil {
-		return host, ip, err
+	if initialized {
+		monitor.TrackNetworkSpeed()
+		if err := statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB()); err != nil {
+			return host, ip, err
+		}
+		_, err := statClient.Recv()
+		if err != nil {
+			return host, ip, err
+		}
 	}
 	// 每10分钟重新获取一次硬件信息
 	if host.Before(time.Now().Add(-10 * time.Minute)) {
@@ -491,9 +492,10 @@ func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip ti
 		}
 	}
 	// 更新IP信息
-	if time.Since(ip) > time.Second*time.Duration(agentConfig.IPReportPeriod) {
-		if reportGeoIP(agentConfig.UseIPv6CountryCode) {
+	if time.Since(ip) > time.Second*time.Duration(agentConfig.IPReportPeriod) || !geoipReported {
+		if reportGeoIP(agentConfig.UseIPv6CountryCode, !geoipReported) {
 			ip = time.Now()
+			geoipReported = true
 		}
 	}
 	return host, ip, nil
@@ -506,13 +508,17 @@ func reportHost() bool {
 	defer hostStatus.Store(false)
 
 	if client != nil && initialized {
-		client.ReportSystemInfo(context.Background(), monitor.GetHost().PB())
+		receipt, err := client.ReportSystemInfo2(context.Background(), monitor.GetHost().PB())
+		if err == nil {
+			geoipReported = receipt.GetData() == prevDashboardBootTime
+			prevDashboardBootTime = receipt.GetData()
+		}
 	}
 
 	return true
 }
 
-func reportGeoIP(use6 bool) bool {
+func reportGeoIP(use6, forceUpdate bool) bool {
 	if !ipStatus.CompareAndSwap(false, true) {
 		return false
 	}
@@ -523,11 +529,9 @@ func reportGeoIP(use6 bool) bool {
 		if pbg == nil {
 			return false
 		}
-
-		if !monitor.GeoQueryIPChanged {
+		if !monitor.GeoQueryIPChanged && !forceUpdate {
 			return true
 		}
-
 		geoip, err := client.ReportGeoIP(context.Background(), pbg)
 		if err == nil {
 			monitor.CachedCountryCode = geoip.GetCountryCode()
