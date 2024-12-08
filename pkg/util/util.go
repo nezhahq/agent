@@ -1,6 +1,8 @@
 package util
 
 import (
+	"context"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -79,4 +81,23 @@ func OnceValue[T any](f func() T) func() T {
 		}
 		return result
 	}
+}
+
+func RotateQueue1(start, i, size int) int {
+	return (start + i) % size
+}
+
+// LookupIP looks up host using the local resolver.
+// It returns a slice of that host's IPv4 and IPv6 addresses.
+func LookupIP(host string) ([]net.IP, error) {
+	var defaultResolver = net.Resolver{PreferGo: true}
+	addrs, err := defaultResolver.LookupIPAddr(context.Background(), host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, len(addrs))
+	for i, ia := range addrs {
+		ips[i] = ia.IP
+	}
+	return ips, nil
 }
