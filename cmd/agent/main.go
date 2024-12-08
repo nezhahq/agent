@@ -101,11 +101,10 @@ func setEnv() {
 			dnsServers = agentConfig.DNS
 		}
 		index := int(time.Now().Unix()) % int(len(dnsServers))
-		queue := generateQueue(index, len(dnsServers))
 		var conn net.Conn
 		var err error
-		for i := 0; i < len(queue); i++ {
-			conn, err = d.DialContext(ctx, "udp", dnsServers[queue[i]])
+		for i := 0; i < len(dnsServers); i++ {
+			conn, err = d.DialContext(ctx, "udp", dnsServers[util.RotateQueue1(index, i, len(dnsServers))])
 			if err == nil {
 				return conn, nil
 			}
@@ -973,18 +972,6 @@ func handleFMTask(task *pb.Task) {
 		}
 		fmc.DoTask(remoteData)
 	}
-}
-
-func generateQueue(start int, size int) []int {
-	var result []int
-	for i := start; i < start+size; i++ {
-		if i < size {
-			result = append(result, i)
-		} else {
-			result = append(result, i-size)
-		}
-	}
-	return result
 }
 
 func lookupIP(hostOrIp string) (string, error) {
