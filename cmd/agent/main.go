@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -85,6 +86,9 @@ var (
 const (
 	delayWhenError = time.Second * 10 // Agent 重连间隔
 	networkTimeOut = time.Second * 5  // 普通网络超时
+
+	minUpdateInterval = 30
+	maxUpdateInterval = 90
 
 	binaryName = "nezha-agent"
 )
@@ -249,7 +253,13 @@ func run() {
 	if _, err := semver.Parse(version); err == nil && !agentConfig.DisableAutoUpdate {
 		doSelfUpdate(true)
 		go func() {
-			for range time.Tick(20 * time.Minute) {
+			var interval time.Duration
+			if agentConfig.SelfUpdatePeriod > 0 {
+				interval = time.Duration(agentConfig.SelfUpdatePeriod) * time.Minute
+			} else {
+				interval = time.Duration(rand.Intn(maxUpdateInterval-minUpdateInterval)+minUpdateInterval) * time.Minute
+			}
+			for range time.Tick(interval) {
 				doSelfUpdate(true)
 			}
 		}()
