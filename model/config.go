@@ -41,6 +41,7 @@ type AgentConfig struct {
 	DisableNat                  bool            `koanf:"disable_nat" json:"disable_nat"`                         // 关闭内网穿透
 	DisableSendQuery            bool            `koanf:"disable_send_query" json:"disable_send_query"`           // 关闭发送TCP/ICMP/HTTP请求
 	IPReportPeriod              uint32          `koanf:"ip_report_period" json:"ip_report_period"`               // IP上报周期
+	SelfUpdatePeriod            uint32          `koanf:"self_update_period" json:"self_update_period"`           // 自动更新周期
 	CustomIPApi                 []string        `koanf:"custom_ip_api" json:"custom_ip_api,omitempty"`           // 自定义 IP API
 
 	k        *koanf.Koanf `json:"-"`
