@@ -483,10 +483,11 @@ func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip ti
 		if err := statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB()); err != nil {
 			return host, ip, err
 		}
-		_, err := statClient.Recv()
+		receipt, err := statClient.Recv()
 		if err != nil {
 			return host, ip, err
 		}
+		geoipReported = !receipt.GeoipNotReported
 	}
 	// 每10分钟重新获取一次硬件信息
 	if host.Before(time.Now().Add(-10 * time.Minute)) {
