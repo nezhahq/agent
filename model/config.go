@@ -76,7 +76,7 @@ func (c *AgentConfig) Read(path string) error {
 	}
 
 	if c.ReportDelay == 0 {
-		c.ReportDelay = 1
+		c.ReportDelay = 3
 	}
 
 	if c.IPReportPeriod == 0 {
