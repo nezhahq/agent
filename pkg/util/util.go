@@ -101,3 +101,15 @@ func LookupIP(host string) ([]net.IP, error) {
 	}
 	return ips, nil
 }
+
+func SubUint[T Unsigned](a, b T) T {
+	if a < b {
+		return 0
+	}
+
+	return a - b
+}
+
+type Unsigned interface {
+	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+}

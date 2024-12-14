@@ -19,6 +19,7 @@ import (
 	"github.com/nezhahq/agent/pkg/monitor/load"
 	"github.com/nezhahq/agent/pkg/monitor/nic"
 	"github.com/nezhahq/agent/pkg/monitor/temperature"
+	"github.com/nezhahq/agent/pkg/util"
 )
 
 var (
@@ -201,10 +202,10 @@ func TrackNetworkSpeed() {
 	innerNetOutTransfer = nc[1]
 
 	now := uint64(time.Now().Unix())
-	diff := now - lastUpdateNetStats
+	diff := util.SubUint(now, lastUpdateNetStats)
 	if diff > 0 {
-		netInSpeed = (innerNetInTransfer - netInTransfer) / diff
-		netOutSpeed = (innerNetOutTransfer - netOutTransfer) / diff
+		netInSpeed = util.SubUint(innerNetInTransfer, netInTransfer) / diff
+		netOutSpeed = util.SubUint(innerNetOutTransfer, netOutTransfer) / diff
 	}
 	netInTransfer = innerNetInTransfer
 	netOutTransfer = innerNetOutTransfer
@@ -257,7 +258,7 @@ func tryHost[T any](ctx context.Context, typ uint8, f hostStateFunc[T]) T {
 		v, err := f(ctx)
 		if err != nil {
 			hostDataFetchAttempts[typ]++
-			printf("monitor error: %v, attempt: %d", err, hostDataFetchAttempts[typ])
+			printf("monitor error: %v, type: %d, attempt: %d", err, typ, hostDataFetchAttempts[typ])
 			return val
 		} else {
 			val = v
@@ -274,7 +275,7 @@ func tryStat[T any](ctx context.Context, typ uint8, f hostStateFunc[T]) T {
 		v, err := f(ctx)
 		if err != nil {
 			statDataFetchAttempts[typ]++
-			printf("monitor error: %v, attempt: %d", err, statDataFetchAttempts[typ])
+			printf("monitor error: %v, type: %d, attempt: %d", err, typ, statDataFetchAttempts[typ])
 			return val
 		} else {
 			val = v
