@@ -102,7 +102,7 @@ func LookupIP(host string) ([]net.IP, error) {
 	return ips, nil
 }
 
-func SubUint[T Unsigned](a, b T) T {
+func SubUintChecked[T Unsigned](a, b T) T {
 	if a < b {
 		return 0
 	}

@@ -202,10 +202,10 @@ func TrackNetworkSpeed() {
 	innerNetOutTransfer = nc[1]
 
 	now := uint64(time.Now().Unix())
-	diff := util.SubUint(now, lastUpdateNetStats)
+	diff := util.SubUintChecked(now, lastUpdateNetStats)
 	if diff > 0 {
-		netInSpeed = util.SubUint(innerNetInTransfer, netInTransfer) / diff
-		netOutSpeed = util.SubUint(innerNetOutTransfer, netOutTransfer) / diff
+		netInSpeed = util.SubUintChecked(innerNetInTransfer, netInTransfer) / diff
+		netOutSpeed = util.SubUintChecked(innerNetOutTransfer, netOutTransfer) / diff
 	}
 	netInTransfer = innerNetInTransfer
 	netOutTransfer = innerNetOutTransfer
