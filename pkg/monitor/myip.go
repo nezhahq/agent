@@ -23,8 +23,9 @@ var (
 	CustomEndpoints               []string
 	GeoQueryIP, CachedCountryCode string
 	GeoQueryIPChanged             bool = true
-	httpClientV4                       = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
-	httpClientV6                       = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
+	retryTimes                    int
+	httpClientV4                  = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
+	httpClientV6                  = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
 )
 
 // UpdateIP 按设置时间间隔更新IP地址的缓存
@@ -60,12 +61,26 @@ func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
 	}
 
 	if GeoQueryIP != "" {
+		retryTimes = 0
 		return &pb.GeoIP{
 			Use6: useIPv6CountryCode,
 			Ip: &pb.IP{
 				Ipv4: ipv4,
 				Ipv6: ipv6,
 			},
+		}
+	} else {
+		if retryTimes < 3 {
+			retryTimes++
+		} else {
+			// fallback to connecting IP
+			return &pb.GeoIP{
+				Use6: false,
+				Ip: &pb.IP{
+					Ipv4: "",
+					Ipv6: "",
+				},
+			}
 		}
 	}
 
