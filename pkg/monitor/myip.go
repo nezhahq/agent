@@ -77,6 +77,23 @@ func fetchIP(servers []string, isV6 bool) string {
 	var resp *http.Response
 	var err error
 
+	//disable_Internet设置为true，不请求Cflist获取ip信息
+	//内网只返回IPV4地址
+	if agentConfig.Disable_Internet {
+		logger.DefaultLogger.Println("内网模式，尝试获取本地IP地址")
+		//获取ipv6时，直接返回空
+		if isV6 {
+			ip = ""
+			return ip
+		} else {
+			// 尝试获取 IPv4
+			ip = getLocalIPv4()
+			logger.DefaultLogger.Printf("本地IPV4地址为: %s\n", ip)
+			return ip
+		}
+
+	}
+
 	// 双栈支持参差不齐，不能随机请求，有些 IPv6 取不到 IP
 	for i := 0; i < len(servers); i++ {
 		if isV6 {
@@ -132,4 +149,23 @@ func httpGetWithUA(client *http.Client, url string) (*http.Response, error) {
 	}
 	req.Header.Add("User-Agent", util.MacOSChromeUA)
 	return client.Do(req)
+}
+
+// 获取本地 IPv4 地址
+func getLocalIPv4() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		logger.DefaultLogger.Printf("获取本地IPV4地址失败: %v\n", err)
+		return "" // 返回空
+	}
+
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+
+	return "" // 如果没有找到合适的 IPv4 地址，返回空
 }

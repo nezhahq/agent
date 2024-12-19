@@ -43,6 +43,7 @@ type AgentConfig struct {
 	IPReportPeriod              uint32          `koanf:"ip_report_period" json:"ip_report_period"`               // IP上报周期
 	SelfUpdatePeriod            uint32          `koanf:"self_update_period" json:"self_update_period"`           // 自动更新周期
 	CustomIPApi                 []string        `koanf:"custom_ip_api" json:"custom_ip_api,omitempty"`           // 自定义 IP API
+	Disable_Internet            bool            `koanf:"disable_internet" json:"disable_internet"`               // 是否内网环境 且无互联网访问权限
 
 	k        *koanf.Koanf `json:"-"`
 	filePath string       `json:"-"`
