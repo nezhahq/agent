@@ -2,6 +2,7 @@ package temperature
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -18,9 +19,12 @@ var sensorIgnoreList = []string{
 
 func GetState(_ context.Context) ([]model.SensorTemperature, error) {
 	temperatures, err := sensors.SensorsTemperatures()
-	if err != nil {
-		return nil, fmt.Errorf("SensorsTemperatures: %v", err)
-	}
+        if err != nil {
+                var sensorsWarnings *sensors.Warnings
+                if !errors.As(err, &sensorsWarnings) {
+                        return nil, fmt.Errorf("SensorsTemperatures: %v", err)
+                }
+        }
 
 	var tempStat []model.SensorTemperature
 	for _, t := range temperatures {
