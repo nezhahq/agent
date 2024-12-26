@@ -41,11 +41,11 @@ func ContainsStr(slice []string, str string) bool {
 }
 
 func RemoveDuplicate[T comparable](sliceList []T) []T {
-	allKeys := make(map[T]bool)
-	list := []T{}
+	allKeys := make(map[T]struct{})
+	var list []T
 	for _, item := range sliceList {
 		if _, value := allKeys[item]; !value {
-			allKeys[item] = true
+			allKeys[item] = struct{}{}
 			list = append(list, item)
 		}
 	}
