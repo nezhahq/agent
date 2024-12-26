@@ -100,22 +100,25 @@ func (t *Task) download() {
 
 	for {
 		bp := bufPool.Get().(*bp)
-		defer bufPool.Put(bp)
 		n, err := file.Read(bp.buf)
 		if err != nil {
 			if err == io.EOF {
+				bufPool.Put(bp)
 				return
 			}
 			t.printf("Error reading file: %s", err)
 			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
+			bufPool.Put(bp)
 			return
 		}
 
 		if err := t.taskClient.Send(&pb.IOStreamData{Data: bp.buf[:n]}); err != nil {
 			t.printf("Error sending file chunk: %s", err)
 			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
+			bufPool.Put(bp)
 			return
 		}
+		bufPool.Put(bp)
 	}
 }
 
