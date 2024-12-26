@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"sync"
 
 	pb "github.com/nezhahq/agent/proto"
 )
@@ -97,29 +98,33 @@ func (t *Task) download() {
 		return
 	}
 
-	buffer := make([]byte, 1048576)
 	for {
-		n, err := file.Read(buffer)
+		bp := bufPool.Get().(*bp)
+		n, err := file.Read(bp.buf)
 		if err != nil {
 			if err == io.EOF {
+				bufPool.Put(bp)
 				return
 			}
 			t.printf("Error reading file: %s", err)
 			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
+			bufPool.Put(bp)
 			return
 		}
 
-		if err := t.taskClient.Send(&pb.IOStreamData{Data: buffer[:n]}); err != nil {
+		if err := t.taskClient.Send(&pb.IOStreamData{Data: bp.buf[:n]}); err != nil {
 			t.printf("Error sending file chunk: %s", err)
 			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
+			bufPool.Put(bp)
 			return
 		}
+		bufPool.Put(bp)
 	}
 }
 
 func (t *Task) upload() {
 	if len(t.remoteData.Data) < 9 {
-		const err string = "data is invalid"
+		const err = "data is invalid"
 		t.printf(err)
 		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(errors.New(err))})
 		return
@@ -157,4 +162,16 @@ func (t *Task) upload() {
 	}
 	t.printf("received file %s.", file.Name())
 	t.taskClient.Send(&pb.IOStreamData{Data: completeIdentifier}) // NZUP
+}
+
+type bp struct {
+	buf []byte
+}
+
+var bufPool = sync.Pool{
+	New: func() any {
+		return &bp{
+			buf: make([]byte, 1024*1024),
+		}
+	},
 }

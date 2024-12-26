@@ -54,46 +54,48 @@ func VersionCheck() bool {
 }
 
 func DownloadDependency() error {
-	if !isWin10 {
-		executablePath, err := getExecutableFilePath()
-		if err != nil {
-			return fmt.Errorf("winpty 获取文件路径失败: %v", err)
-		}
-
-		winptyAgentExe := filepath.Join(executablePath, "winpty-agent.exe")
-		winptyAgentDll := filepath.Join(executablePath, "winpty.dll")
-
-		fe, errFe := os.Stat(winptyAgentExe)
-		fd, errFd := os.Stat(winptyAgentDll)
-		if errFe == nil && fe.Size() > 300000 && errFd == nil && fd.Size() > 300000 {
-			return fmt.Errorf("winpty 文件完整性检查失败")
-		}
-
-		resp, err := http.Get("https://github.com/rprichard/winpty/releases/download/0.4.3/winpty-0.4.3-msvc2015.zip")
-		if err != nil {
-			return fmt.Errorf("winpty 下载失败: %v", err)
-		}
-		defer resp.Body.Close()
-		content, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("winpty 下载失败: %v", err)
-		}
-		if err := os.WriteFile("./wintty.zip", content, os.FileMode(0777)); err != nil {
-			return fmt.Errorf("winpty 写入失败: %v", err)
-		}
-		if err := unzip.New("./wintty.zip", "./wintty").Extract(); err != nil {
-			return fmt.Errorf("winpty 解压失败: %v", err)
-		}
-		arch := "x64"
-		if runtime.GOARCH != "amd64" {
-			arch = "ia32"
-		}
-
-		os.Rename("./wintty/"+arch+"/bin/winpty-agent.exe", winptyAgentExe)
-		os.Rename("./wintty/"+arch+"/bin/winpty.dll", winptyAgentDll)
-		os.RemoveAll("./wintty")
-		os.RemoveAll("./wintty.zip")
+	if isWin10 {
+		return nil
 	}
+
+	executablePath, err := getExecutableFilePath()
+	if err != nil {
+		return fmt.Errorf("winpty 获取文件路径失败: %v", err)
+	}
+
+	winptyAgentExe := filepath.Join(executablePath, "winpty-agent.exe")
+	winptyAgentDll := filepath.Join(executablePath, "winpty.dll")
+
+	fe, errFe := os.Stat(winptyAgentExe)
+	fd, errFd := os.Stat(winptyAgentDll)
+	if errFe == nil && fe.Size() > 300000 && errFd == nil && fd.Size() > 300000 {
+		return fmt.Errorf("winpty 文件完整性检查失败")
+	}
+
+	resp, err := http.Get("https://github.com/rprichard/winpty/releases/download/0.4.3/winpty-0.4.3-msvc2015.zip")
+	if err != nil {
+		return fmt.Errorf("winpty 下载失败: %v", err)
+	}
+	defer resp.Body.Close()
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("winpty 下载失败: %v", err)
+	}
+	if err := os.WriteFile("./wintty.zip", content, os.FileMode(0777)); err != nil {
+		return fmt.Errorf("winpty 写入失败: %v", err)
+	}
+	if err := unzip.New("./wintty.zip", "./wintty").Extract(); err != nil {
+		return fmt.Errorf("winpty 解压失败: %v", err)
+	}
+	arch := "x64"
+	if runtime.GOARCH != "amd64" {
+		arch = "ia32"
+	}
+
+	os.Rename("./wintty/"+arch+"/bin/winpty-agent.exe", winptyAgentExe)
+	os.Rename("./wintty/"+arch+"/bin/winpty.dll", winptyAgentDll)
+	os.RemoveAll("./wintty")
+	os.RemoveAll("./wintty.zip")
 	return nil
 }
 
