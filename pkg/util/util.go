@@ -11,7 +11,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-const MacOSChromeUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+const MacOSChromeUA = "nezha-agent/1.0"
 
 var (
 	Json = jsoniter.ConfigCompatibleWithStandardLibrary
