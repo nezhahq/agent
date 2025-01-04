@@ -55,7 +55,7 @@ func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
 	if ipv6 != "" && (useIPv6CountryCode || ipv4 == "") {
 		GeoQueryIPChanged = GeoQueryIP != ipv6 || GeoQueryIPChanged
 		GeoQueryIP = ipv6
-	} else {
+	} else if ipv4 != "" {
 		GeoQueryIPChanged = GeoQueryIP != ipv4 || GeoQueryIPChanged
 		GeoQueryIP = ipv4
 	}
