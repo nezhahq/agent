@@ -20,7 +20,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.1.2
 	github.com/knadh/koanf/v2 v2.1.2
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20241205090552-0b56e412e750
-	github.com/nezhahq/service v0.0.0-20241205090409-40f63a48da4e
+	github.com/nezhahq/service v0.0.0-20250103144207-3c1f9e01d8ae
 	github.com/prometheus-community/pro-bing v0.4.1
 	github.com/quic-go/quic-go v0.40.1
 	github.com/refraction-networking/utls v1.6.3
@@ -67,6 +67,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/nezhahq/xsyslog v1.0.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.9.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect

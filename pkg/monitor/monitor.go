@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -61,6 +62,7 @@ var statDataFetchAttempts = map[uint8]uint8{
 
 var (
 	updateTempStatus = new(atomic.Bool)
+	stateLock        sync.Mutex
 )
 
 func InitConfig(cfg *model.AgentConfig) {
@@ -270,6 +272,9 @@ func tryHost[T any](ctx context.Context, typ uint8, f hostStateFunc[T]) T {
 
 func tryStat[T any](ctx context.Context, typ uint8, f hostStateFunc[T]) T {
 	var val T
+
+	stateLock.Lock()
+	defer stateLock.Unlock()
 
 	if statDataFetchAttempts[typ] < maxDeviceDataFetchAttempts {
 		v, err := f(ctx)
