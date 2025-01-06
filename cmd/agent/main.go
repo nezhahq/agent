@@ -822,17 +822,19 @@ func handleTerminalTask(task *pb.Task) {
 		return
 	}
 
-	go ioStreamKeepAlive(remoteIO)
-
 	tty, err := pty.Start()
 	if err != nil {
 		printf("Terminal pty.Start失败 %v", err)
 		return
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	go ioStreamKeepAlive(ctx, remoteIO)
+
 	defer func() {
 		err := tty.Close()
 		errCloseSend := remoteIO.CloseSend()
+		cancel()
 		println("terminal exit", terminal.StreamID, err, errCloseSend)
 	}()
 	println("terminal init", terminal.StreamID)
@@ -900,17 +902,19 @@ func handleNATTask(task *pb.Task) {
 		return
 	}
 
-	go ioStreamKeepAlive(remoteIO)
-
 	conn, err := net.Dial("tcp", nat.Host)
 	if err != nil {
 		printf("NAT Dial %s 失败：%s", nat.Host, err)
 		return
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	go ioStreamKeepAlive(ctx, remoteIO)
+
 	defer func() {
 		err := conn.Close()
 		errCloseSend := remoteIO.CloseSend()
+		cancel()
 		println("NAT exit", nat.StreamID, err, errCloseSend)
 	}()
 	println("NAT init", nat.StreamID)
@@ -963,10 +967,12 @@ func handleFMTask(task *pb.Task) {
 		return
 	}
 
-	go ioStreamKeepAlive(remoteIO)
+	ctx, cancel := context.WithCancel(context.Background())
+	go ioStreamKeepAlive(ctx, remoteIO)
 
 	defer func() {
 		errCloseSend := remoteIO.CloseSend()
+		cancel()
 		println("FM exit", fmTask.StreamID, nil, errCloseSend)
 	}()
 	println("FM init", fmTask.StreamID)
@@ -998,12 +1004,21 @@ func lookupIP(hostOrIp string) (string, error) {
 	return hostOrIp, nil
 }
 
-func ioStreamKeepAlive(stream pb.NezhaService_IOStreamClient) {
+func ioStreamKeepAlive(ctx context.Context, stream pb.NezhaService_IOStreamClient) {
+	// Can be replaced with time.Tick after upgrading to Go 1.23+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
 	for {
-		if err := stream.Send(&pb.IOStreamData{Data: []byte{}}); err != nil {
-			printf("IOStream KeepAlive 失败: %v", err)
+		select {
+		case <-ctx.Done():
+			log.Printf("IOStream KeepAlive stopped: %v", ctx.Err())
 			return
+		case <-ticker.C:
+			if err := stream.Send(&pb.IOStreamData{Data: []byte{}}); err != nil {
+				log.Printf("IOStream KeepAlive failed: %v", err)
+				return
+			}
 		}
-		time.Sleep(time.Second * 30)
 	}
 }
