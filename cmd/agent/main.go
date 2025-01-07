@@ -829,12 +829,13 @@ func handleTerminalTask(task *pb.Task) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go ioStreamKeepAlive(ctx, remoteIO)
 
 	defer func() {
 		err := tty.Close()
 		errCloseSend := remoteIO.CloseSend()
-		cancel()
 		println("terminal exit", terminal.StreamID, err, errCloseSend)
 	}()
 	println("terminal init", terminal.StreamID)
@@ -909,12 +910,13 @@ func handleNATTask(task *pb.Task) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go ioStreamKeepAlive(ctx, remoteIO)
 
 	defer func() {
 		err := conn.Close()
 		errCloseSend := remoteIO.CloseSend()
-		cancel()
 		println("NAT exit", nat.StreamID, err, errCloseSend)
 	}()
 	println("NAT init", nat.StreamID)
@@ -968,11 +970,12 @@ func handleFMTask(task *pb.Task) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go ioStreamKeepAlive(ctx, remoteIO)
 
 	defer func() {
 		errCloseSend := remoteIO.CloseSend()
-		cancel()
 		println("FM exit", fmTask.StreamID, nil, errCloseSend)
 	}()
 	println("FM init", fmTask.StreamID)
