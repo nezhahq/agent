@@ -61,7 +61,7 @@ var statDataFetchAttempts = map[uint8]uint8{
 }
 
 var (
-	updateTempStatus = new(atomic.Bool)
+	updateTempStatus atomic.Bool
 	stateLock        sync.Mutex
 )
 

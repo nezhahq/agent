@@ -59,8 +59,8 @@ var (
 	lastReportHostInfo    time.Time
 	lastReportIPInfo      time.Time
 
-	hostStatus = new(atomic.Bool)
-	ipStatus   = new(atomic.Bool)
+	hostStatus atomic.Bool
+	ipStatus   atomic.Bool
 
 	dnsResolver = &net.Resolver{PreferGo: true}
 	httpClient  = &http.Client{
@@ -579,6 +579,7 @@ func doSelfUpdate(useLocalVersion bool) {
 	}
 	if !latest.Version.Equals(v) {
 		printf("已经更新至: %v, 正在结束进程", latest.Version)
+		util.KillProcessByCmd(executablePath)
 		os.Exit(1)
 	}
 }
