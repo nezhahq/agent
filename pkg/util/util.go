@@ -114,8 +114,12 @@ func KillProcessByCmd(cmd string) error {
 	for _, proc := range procs {
 		pcmd, _ := proc.CmdlineSlice()
 		if len(pcmd) > 0 && pcmd[0] == cmd && proc.Pid != int32(os.Getpid()) {
-			err := proc.Kill()
-			perr = errors.Join(perr, err)
+			if children, err := proc.Children(); err == nil {
+				for _, child := range children {
+					perr = errors.Join(perr, killChildProcess(child))
+				}
+			}
+			perr = errors.Join(perr, proc.Kill())
 		}
 	}
 
