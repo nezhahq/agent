@@ -23,14 +23,29 @@ var (
 	CustomEndpoints               []string
 	GeoQueryIP, CachedCountryCode string
 	GeoQueryIPChanged             bool = true
-	retryTimes                    int
-	httpClientV4                  = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
-	httpClientV6                  = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
+	httpClientV4                       = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
+	httpClientV6                       = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
+
+	retryTimes      int
+	failedStartedAt time.Time
+	latestRetryAt   time.Time
 )
 
 // UpdateIP 按设置时间间隔更新IP地址的缓存
 func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
 	logger.DefaultLogger.Println("正在更新本地缓存IP信息")
+
+	if retryTimes > 2 && time.Now().Before(latestRetryAt.Add(latestRetryAt.Sub(failedStartedAt)*time.Duration(2))) {
+		logger.DefaultLogger.Println("IP地址获取失败次数过多，fallback到agent连接IP")
+		return &pb.GeoIP{
+			Use6: false,
+			Ip: &pb.IP{
+				Ipv4: "",
+				Ipv6: "",
+			},
+		}
+	}
+
 	wg := new(sync.WaitGroup)
 	wg.Add(2)
 	var ipv4, ipv6 string
@@ -69,25 +84,21 @@ func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
 				Ipv6: ipv6,
 			},
 		}
-	} else {
-		if retryTimes < 3 {
-			retryTimes++
-		} else {
-			// fallback to connecting IP
-			return &pb.GeoIP{
-				Use6: false,
-				Ip: &pb.IP{
-					Ipv4: "",
-					Ipv6: "",
-				},
-			}
-		}
+	}
+
+	retryTimes++
+	now := time.Now()
+	latestRetryAt = now
+
+	if retryTimes == 1 {
+		failedStartedAt = now
 	}
 
 	return nil
 }
 
 func fetchIP(servers []string, isV6 bool) string {
+	return "" // TODO: implement this function
 	var ip string
 	var resp *http.Response
 	var err error
