@@ -98,7 +98,6 @@ func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
 }
 
 func fetchIP(servers []string, isV6 bool) string {
-	return "" // TODO: implement this function
 	var ip string
 	var resp *http.Response
 	var err error
