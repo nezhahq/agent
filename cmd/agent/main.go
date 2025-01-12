@@ -527,20 +527,26 @@ func reportGeoIP(use6, forceUpdate bool) bool {
 	}
 	defer ipStatus.Store(false)
 
-	if client != nil && initialized {
-		pbg := monitor.FetchIP(use6)
-		if pbg == nil {
-			return false
-		}
-		if !monitor.GeoQueryIPChanged && !forceUpdate {
-			return true
-		}
-		geoip, err := client.ReportGeoIP(context.Background(), pbg)
-		if err == nil {
-			monitor.CachedCountryCode = geoip.GetCountryCode()
-			monitor.GeoQueryIPChanged = false
-		}
+	if client == nil || !initialized {
+		return false
 	}
+
+	pbg := monitor.FetchIP(use6)
+	if pbg == nil {
+		return false
+	}
+
+	if !monitor.GeoQueryIPChanged && !forceUpdate {
+		return true
+	}
+
+	geoip, err := client.ReportGeoIP(context.Background(), pbg)
+	if err != nil {
+		return false
+	}
+
+	monitor.CachedCountryCode = geoip.GetCountryCode()
+	monitor.GeoQueryIPChanged = false
 
 	return true
 }
