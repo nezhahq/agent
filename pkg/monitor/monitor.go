@@ -89,6 +89,7 @@ func GetHost() *model.Host {
 		ret.PlatformVersion = hi.PlatformVersion
 		ret.Arch = hi.KernelArch
 		ret.BootTime = hi.BootTime
+		cachedBootTime = time.Unix(int64(hi.BootTime), 0)
 	}
 
 	ctxCpu := context.WithValue(context.Background(), cpu.CPUHostKey, cpuType)
@@ -118,8 +119,6 @@ func GetHost() *model.Host {
 			ret.SwapTotal = ms.Total
 		}
 	}
-
-	cachedBootTime = time.Unix(int64(hi.BootTime), 0)
 
 	ret.Version = Version
 
