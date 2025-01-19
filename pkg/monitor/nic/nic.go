@@ -13,7 +13,7 @@ const NICKey NICKeyType = "nic"
 
 var (
 	excludeNetInterfaces = []string{
-		"lo", "tun", "docker", "veth", "br-", "vmbr", "vnet", "kube", "Meta", "tailscale",
+		"lo", "tun", "docker", "veth", "br-", "vmbr", "vnet", "kube", "Meta", "tailscale", "fw", "tap",
 	}
 
 	defaultMatcher = ahocorasick.NewStringMatcher(excludeNetInterfaces)
