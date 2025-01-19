@@ -11,6 +11,7 @@ Agent of Nezha Monitoring
 <a href="https://github.com/AEnjoy" title="AEnjoy"><img src="https://avatars.githubusercontent.com/u/37976919?v=4" width="50;" alt="AEnjoy"/></a>
 <a href="https://github.com/wwng2333" title=":D"><img src="https://avatars.githubusercontent.com/u/17147265?v=4" width="50;" alt=":D"/></a>
 <a href="https://github.com/DarcJC" title="Darc Z."><img src="https://avatars.githubusercontent.com/u/53445798?v=4" width="50;" alt="Darc Z."/></a>
+<a href="https://github.com/geniucker-dev" title="Geniucker Zhu"><img src="https://avatars.githubusercontent.com/u/165345526?v=4" width="50;" alt="Geniucker Zhu"/></a>
 <a href="https://github.com/ChrisKimZHT" title="Haotian Zou"><img src="https://avatars.githubusercontent.com/u/49368462?v=4" width="50;" alt="Haotian Zou"/></a>
 <a href="https://github.com/xream" title="xream"><img src="https://avatars.githubusercontent.com/u/1210282?v=4" width="50;" alt="xream"/></a>
 <a href="https://github.com/xykt" title="xykt"><img src="https://avatars.githubusercontent.com/u/152045469?v=4" width="50;" alt="xykt"/></a>
