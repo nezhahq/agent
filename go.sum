@@ -38,8 +38,8 @@ github.com/dean2021/goss v0.0.0-20230129073947-df90431348f1 h1:5UiJ324LiCdOF/3w/
 github.com/dean2021/goss v0.0.0-20230129073947-df90431348f1/go.mod h1:NiLueuVb3hYcdF4ta+2ezcKJh6BEjhrBz9Hts6XJ5Sc=
 github.com/ebi-yade/altsvc-go v0.1.1 h1:HmZDNb5ZOPlkyXhi34LnRckawFCux7yPYw+dtInIixo=
 github.com/ebi-yade/altsvc-go v0.1.1/go.mod h1:K/U20bLcsOVrbTeDhqRjp+e3tgNT5iAqSiQzPoU0/Q0=
-github.com/ebitengine/purego v0.8.1 h1:sdRKd6plj7KYW33EH5As6YKfe8m9zbN9JMrOjNVF/BE=
-github.com/ebitengine/purego v0.8.1/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
+github.com/ebitengine/purego v0.8.2 h1:jPPGWs2sZ1UgOSgD2bClL0MJIqu58nOmIcBuXr62z1I=
+github.com/ebitengine/purego v0.8.2/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/fsnotify/fsnotify v1.7.0 h1:8JEhPFa5W2WU7YfeZzPNqzMP6Lwt7L2715Ggo0nosvA=
 github.com/fsnotify/fsnotify v1.7.0/go.mod h1:40Bi/Hjc2AVfZrqy+aj+yEI+/bRxZnMJyTJwOpGvigM=
 github.com/ghodss/yaml v1.0.0 h1:wQHKEahhL6wmXdzwWG11gIVCkOv05bNOh+Rxn0yngAk=
@@ -124,10 +124,10 @@ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9G
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
 github.com/nezhahq/go-github-selfupdate v0.0.0-20241205090552-0b56e412e750 h1:T0APK/dSR1CgIYYIQmobxYh+gRfEUuD8ZCiflGL+8lI=
 github.com/nezhahq/go-github-selfupdate v0.0.0-20241205090552-0b56e412e750/go.mod h1:NVxyW3iSQ7YII8vvCIBTzk4HzsAa08Iibb68e0i0Nww=
-github.com/nezhahq/service v0.0.0-20250109133041-8d6fcf8e7646 h1:qgAOzF3Rql/UXLMQkEIg+HHYjhiCYaDsoX1u05blOUI=
-github.com/nezhahq/service v0.0.0-20250109133041-8d6fcf8e7646/go.mod h1:f8o3QyjAvHirebUklhFLKM4QC4wG8T5+abObRjNmQoY=
-github.com/nezhahq/xsyslog v1.0.0 h1:fSSDxaMy7eEWdTB5L2yp47GOctOM/gItfPsF1freZBc=
-github.com/nezhahq/xsyslog v1.0.0/go.mod h1:wRJ6n/bly5i71/ZWhnoA39v0rFvr3Q1PSlIlExbX3fk=
+github.com/nezhahq/service v0.0.0-20250122132143-5f38afb105e9 h1:BXowwSdGVKOpSKiNBQA9Ax2mBcf9B31Zbbz99PBqRhM=
+github.com/nezhahq/service v0.0.0-20250122132143-5f38afb105e9/go.mod h1:uOZzv+KTXyvRkfWd2Cj9QE/OK/J/fEVphGwUWBzgcx8=
+github.com/nezhahq/xsyslog v1.0.1 h1:xWpx8ZHtoRuUYo7Cs0EZ/kvA6O/y3Ebj5VPdX49xlZw=
+github.com/nezhahq/xsyslog v1.0.1/go.mod h1:wRJ6n/bly5i71/ZWhnoA39v0rFvr3Q1PSlIlExbX3fk=
 github.com/onsi/ginkgo/v2 v2.9.5 h1:+6Hr4uxzP4XIUyAkg61dWBw8lb/gc4/X5luuxN/EC+Q=
 github.com/onsi/ginkgo/v2 v2.9.5/go.mod h1:tvAoo1QUJwNEU2ITftXTpR7R1RbCzoZUOs3RonqW57k=
 github.com/onsi/gomega v1.27.6 h1:ENqfyGeS5AX/rlXDd/ETokDz93u0YufY1Pgxuy/PvWE=
