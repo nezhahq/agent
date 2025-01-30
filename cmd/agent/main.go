@@ -33,7 +33,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
-	"sigs.k8s.io/yaml"
 
 	"github.com/nezhahq/agent/cmd/agent/commands"
 	"github.com/nezhahq/agent/model"
@@ -822,7 +821,7 @@ func handleReportConfigTask(result *pb.TaskResult) {
 
 	println("Executing Report Config Task")
 
-	c, err := yaml.Marshal(agentConfig)
+	c, err := util.Json.Marshal(agentConfig)
 	if err != nil {
 		result.Data = err.Error()
 		return
@@ -841,7 +840,8 @@ func handleApplyConfigTask(task *pb.Task, result *pb.TaskResult) {
 	println("Executing Apply Config Task")
 
 	var tmpConfig model.AgentConfig
-	if err := yaml.Unmarshal([]byte(task.GetData()), &tmpConfig); err != nil {
+	json := []byte(task.GetData())
+	if err := util.Json.Unmarshal(json, &tmpConfig); err != nil {
 		result.Data = err.Error()
 		return
 	}
@@ -856,7 +856,7 @@ func handleApplyConfigTask(task *pb.Task, result *pb.TaskResult) {
 	time.AfterFunc(time.Second*30, func() {
 		println("Applying new configuration...")
 		agentConfig.Apply(&tmpConfig)
-		agentConfig.Save()
+		agentConfig.SaveToYAML(json)
 		geoipReported = false
 		logger.SetEnable(agentConfig.Debug)
 		monitor.InitConfig(&agentConfig)

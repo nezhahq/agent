@@ -101,6 +101,20 @@ func (c *AgentConfig) Save() error {
 	return os.WriteFile(c.filePath, data, 0600)
 }
 
+func (c *AgentConfig) SaveToYAML(j []byte) error {
+	data, err := yaml.JSONToYAML(j)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(c.filePath)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return err
+	}
+
+	return os.WriteFile(c.filePath, data, 0600)
+}
+
 func (c *AgentConfig) Apply(new *AgentConfig) {
 	c.Debug = new.Debug
 	c.Server = new.Server
