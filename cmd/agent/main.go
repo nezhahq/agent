@@ -852,11 +852,13 @@ func handleApplyConfigTask(task *pb.Task) {
 	json := []byte(task.GetData())
 	if err := util.Json.Unmarshal(json, &tmpConfig); err != nil {
 		printf("Validate Config failed: %v", err)
+		reloadStatus.Store(false)
 		return
 	}
 
 	if err := model.ValidateConfig(&tmpConfig, true); err != nil {
 		printf("Validate Config failed: %v", err)
+		reloadStatus.Store(false)
 		return
 	}
 
