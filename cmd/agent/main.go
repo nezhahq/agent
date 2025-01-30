@@ -857,6 +857,7 @@ func handleApplyConfigTask(task *pb.Task, result *pb.TaskResult) {
 		println("Applying new configuration...")
 		agentConfig.Apply(&tmpConfig)
 		agentConfig.Save()
+		geoipReported = false
 		logger.SetEnable(agentConfig.Debug)
 		monitor.InitConfig(&agentConfig)
 		monitor.CustomEndpoints = agentConfig.CustomIPApi
