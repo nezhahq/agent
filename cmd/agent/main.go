@@ -853,7 +853,7 @@ func handleApplyConfigTask(task *pb.Task, result *pb.TaskResult) {
 
 	result.Successful = true
 	println("Will reload workers in 30 seconds")
-	time.AfterFunc(time.Second*5, func() {
+	time.AfterFunc(time.Second*30, func() {
 		println("Applying new configuration...")
 		agentConfig.Apply(&tmpConfig)
 		agentConfig.Save()
