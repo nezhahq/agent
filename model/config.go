@@ -75,6 +75,60 @@ func (c *AgentConfig) Read(path string) error {
 		return err
 	}
 
+	if c.UUID == "" {
+		if uuid, err := uuid.GenerateUUID(); err == nil {
+			c.UUID = uuid
+			return saveOnce()
+		} else {
+			return fmt.Errorf("generate UUID failed: %v", err)
+		}
+	}
+
+	return ValidateConfig(c)
+}
+
+func (c *AgentConfig) Save() error {
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(c.filePath)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return err
+	}
+
+	return os.WriteFile(c.filePath, data, 0600)
+}
+
+func (c *AgentConfig) Apply(new *AgentConfig) {
+	c.Debug = new.Debug
+	c.Server = new.Server
+	c.ClientSecret = new.ClientSecret
+	c.UUID = new.UUID
+	c.HardDrivePartitionAllowlist = new.HardDrivePartitionAllowlist
+	c.NICAllowlist = new.NICAllowlist
+	c.DNS = new.DNS
+	c.GPU = new.GPU
+	c.Temperature = new.Temperature
+	c.SkipConnectionCount = new.SkipConnectionCount
+	c.SkipProcsCount = new.SkipProcsCount
+	c.DisableAutoUpdate = new.DisableAutoUpdate
+	c.DisableForceUpdate = new.DisableForceUpdate
+	c.DisableCommandExecute = new.DisableCommandExecute
+	c.ReportDelay = new.ReportDelay
+	c.TLS = new.TLS
+	c.InsecureTLS = new.InsecureTLS
+	c.UseIPv6CountryCode = new.UseIPv6CountryCode
+	c.UseGiteeToUpgrade = new.UseGiteeToUpgrade
+	c.DisableNat = new.DisableNat
+	c.DisableSendQuery = new.DisableSendQuery
+	c.IPReportPeriod = new.IPReportPeriod
+	c.SelfUpdatePeriod = new.SelfUpdatePeriod
+	c.CustomIPApi = new.CustomIPApi
+}
+
+func ValidateConfig(c *AgentConfig) error {
 	if c.ReportDelay == 0 {
 		c.ReportDelay = 3
 	}
@@ -97,30 +151,11 @@ func (c *AgentConfig) Read(path string) error {
 		return errors.New("report-delay ranges from 1-4")
 	}
 
-	if c.UUID == "" {
-		if uuid, err := uuid.GenerateUUID(); err == nil {
-			c.UUID = uuid
-			return saveOnce()
-		} else {
-			return fmt.Errorf("generate UUID failed: %v", err)
-		}
+	if _, err := uuid.ParseUUID(c.UUID); err != nil {
+		return err
 	}
 
 	return nil
-}
-
-func (c *AgentConfig) Save() error {
-	data, err := yaml.Marshal(c)
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(c.filePath)
-	if err := os.MkdirAll(dir, 0750); err != nil {
-		return err
-	}
-
-	return os.WriteFile(c.filePath, data, 0600)
 }
 
 type kubeyaml struct{}
