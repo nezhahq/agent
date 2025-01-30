@@ -59,8 +59,9 @@ var (
 	lastReportHostInfo    time.Time
 	lastReportIPInfo      time.Time
 
-	hostStatus atomic.Bool
-	ipStatus   atomic.Bool
+	hostStatus   atomic.Bool
+	ipStatus     atomic.Bool
+	reloadStatus atomic.Bool
 
 	dnsResolver = &net.Resolver{PreferGo: true}
 	httpClient  = &http.Client{
@@ -470,7 +471,7 @@ func doTask(task *pb.Task) *pb.TaskResult {
 	case model.TaskTypeReportConfig:
 		handleReportConfigTask(&result)
 	case model.TaskTypeApplyConfig:
-		handleApplyConfigTask(task, &result)
+		handleApplyConfigTask(task)
 	case model.TaskTypeKeepalive:
 	default:
 		printf("不支持的任务: %v", task)
@@ -819,6 +820,11 @@ func handleReportConfigTask(result *pb.TaskResult) {
 		return
 	}
 
+	if reloadStatus.Load() {
+		result.Data = "another reload is in process"
+		return
+	}
+
 	println("Executing Report Config Task")
 
 	c, err := util.Json.Marshal(agentConfig)
@@ -831,9 +837,12 @@ func handleReportConfigTask(result *pb.TaskResult) {
 	result.Successful = true
 }
 
-func handleApplyConfigTask(task *pb.Task, result *pb.TaskResult) {
+func handleApplyConfigTask(task *pb.Task) {
 	if agentConfig.DisableCommandExecute {
-		result.Data = "此 Agent 已禁止命令执行"
+		return
+	}
+
+	if !reloadStatus.CompareAndSwap(false, true) {
 		return
 	}
 
@@ -842,25 +851,25 @@ func handleApplyConfigTask(task *pb.Task, result *pb.TaskResult) {
 	var tmpConfig model.AgentConfig
 	json := []byte(task.GetData())
 	if err := util.Json.Unmarshal(json, &tmpConfig); err != nil {
-		result.Data = err.Error()
+		printf("Validate Config failed: %v", err)
 		return
 	}
 
-	if err := model.ValidateConfig(&tmpConfig); err != nil {
-		result.Data = err.Error()
+	if err := model.ValidateConfig(&tmpConfig, true); err != nil {
+		printf("Validate Config failed: %v", err)
 		return
 	}
 
-	result.Successful = true
 	println("Will reload workers in 30 seconds")
 	time.AfterFunc(time.Second*30, func() {
 		println("Applying new configuration...")
 		agentConfig.Apply(&tmpConfig)
-		agentConfig.SaveToYAML(json)
+		agentConfig.Save()
 		geoipReported = false
 		logger.SetEnable(agentConfig.Debug)
 		monitor.InitConfig(&agentConfig)
 		monitor.CustomEndpoints = agentConfig.CustomIPApi
+		reloadStatus.Store(false)
 		reloadSigChan <- struct{}{}
 	})
 }

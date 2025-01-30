@@ -84,7 +84,7 @@ func (c *AgentConfig) Read(path string) error {
 		}
 	}
 
-	return ValidateConfig(c)
+	return ValidateConfig(c, false)
 }
 
 func (c *AgentConfig) Save() error {
@@ -101,28 +101,10 @@ func (c *AgentConfig) Save() error {
 	return os.WriteFile(c.filePath, data, 0600)
 }
 
-func (c *AgentConfig) SaveToYAML(j []byte) error {
-	data, err := yaml.JSONToYAML(j)
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(c.filePath)
-	if err := os.MkdirAll(dir, 0750); err != nil {
-		return err
-	}
-
-	return os.WriteFile(c.filePath, data, 0600)
-}
-
 func (c *AgentConfig) Apply(new *AgentConfig) {
 	c.Debug = new.Debug
-	c.Server = new.Server
-	c.ClientSecret = new.ClientSecret
-	c.UUID = new.UUID
 	c.HardDrivePartitionAllowlist = new.HardDrivePartitionAllowlist
 	c.NICAllowlist = new.NICAllowlist
-	c.DNS = new.DNS
 	c.GPU = new.GPU
 	c.Temperature = new.Temperature
 	c.SkipConnectionCount = new.SkipConnectionCount
@@ -131,18 +113,13 @@ func (c *AgentConfig) Apply(new *AgentConfig) {
 	c.DisableForceUpdate = new.DisableForceUpdate
 	c.DisableCommandExecute = new.DisableCommandExecute
 	c.ReportDelay = new.ReportDelay
-	c.TLS = new.TLS
-	c.InsecureTLS = new.InsecureTLS
-	c.UseIPv6CountryCode = new.UseIPv6CountryCode
-	c.UseGiteeToUpgrade = new.UseGiteeToUpgrade
 	c.DisableNat = new.DisableNat
 	c.DisableSendQuery = new.DisableSendQuery
 	c.IPReportPeriod = new.IPReportPeriod
 	c.SelfUpdatePeriod = new.SelfUpdatePeriod
-	c.CustomIPApi = new.CustomIPApi
 }
 
-func ValidateConfig(c *AgentConfig) error {
+func ValidateConfig(c *AgentConfig, isRemoteEdit bool) error {
 	if c.ReportDelay == 0 {
 		c.ReportDelay = 3
 	}
@@ -153,20 +130,22 @@ func ValidateConfig(c *AgentConfig) error {
 		c.IPReportPeriod = 30
 	}
 
-	if c.Server == "" {
-		return errors.New("server address should not be empty")
-	}
-
-	if c.ClientSecret == "" {
-		return errors.New("client_secret must be specified")
-	}
-
 	if c.ReportDelay < 1 || c.ReportDelay > 4 {
 		return errors.New("report-delay ranges from 1-4")
 	}
 
-	if _, err := uuid.ParseUUID(c.UUID); err != nil {
-		return err
+	if !isRemoteEdit {
+		if c.Server == "" {
+			return errors.New("server address should not be empty")
+		}
+
+		if c.ClientSecret == "" {
+			return errors.New("client_secret must be specified")
+		}
+
+		if _, err := uuid.ParseUUID(c.UUID); err != nil {
+			return err
+		}
 	}
 
 	return nil
