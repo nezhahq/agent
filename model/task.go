@@ -13,6 +13,8 @@ const (
 	TaskTypeNAT
 	TaskTypeReportHostInfoDeprecated
 	TaskTypeFM
+	TaskTypeReportConfig
+	TaskTypeApplyConfig
 )
 
 type TerminalTask struct {
