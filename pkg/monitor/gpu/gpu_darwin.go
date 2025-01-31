@@ -151,7 +151,8 @@ func findDevices(key string) ([]string, error) {
 		}
 
 		cfStr := CFStringCreateWithCString(kCFAllocatorDefault, key, kCFStringEncodingUTF8)
-		result, _, _ := findProperties(service, uintptr(cfStr), 0)
+		r, _ := findProperties(service, uintptr(cfStr), 0)
+		result, _ := r.(string)
 		IOObjectRelease(service)
 
 		if util.ContainsStr(validVendors, result) {
@@ -173,8 +174,8 @@ func findDevices(key string) ([]string, error) {
 
 func findUtilization(key, dictKey string) (int, error) {
 	var iterator ioIterator
+	var result int
 	var err error
-	result := 0
 
 	iv := IOServiceGetMatchingServices(kIOMainPortDefault, uintptr(IOServiceMatching(IOSERVICE_GPU)), &iterator)
 	if iv != KERN_SUCCESS {
@@ -192,12 +193,14 @@ func findUtilization(key, dictKey string) (int, error) {
 		cfStr := CFStringCreateWithCString(kCFAllocatorDefault, key, CFStringEncoding(kCFStringEncodingUTF8))
 		cfDictStr := CFStringCreateWithCString(kCFAllocatorDefault, dictKey, CFStringEncoding(kCFStringEncodingUTF8))
 
-		_, result, err = findProperties(service, uintptr(cfStr), uintptr(cfDictStr))
+		r, rerr := findProperties(service, uintptr(cfStr), uintptr(cfDictStr))
+		result, _ = r.(int)
 
 		CFRelease(uintptr(cfStr))
 		CFRelease(uintptr(cfDictStr))
 
-		if err != nil {
+		if rerr != nil {
+			err = rerr
 			IOObjectRelease(service)
 			continue
 		} else if result != 0 {
@@ -211,7 +214,7 @@ func findUtilization(key, dictKey string) (int, error) {
 	return result, err
 }
 
-func findProperties(service ioRegistryEntry, key, dictKey uintptr) (string, int, error) {
+func findProperties(service ioRegistryEntry, key, dictKey uintptr) (any, error) {
 	properties := IORegistryEntrySearchCFProperty(service, kIOServicePlane, key, kCFAllocatorDefault, kIORegistryIterateRecursively)
 	ptrValue := uintptr(properties)
 	if properties != nil {
@@ -222,26 +225,26 @@ func findProperties(service ioRegistryEntry, key, dictKey uintptr) (string, int,
 			buf := make([]byte, length-1)
 			CFStringGetCString(ptrValue, &buf[0], length, uint32(kCFStringEncodingUTF8))
 			CFRelease(ptrValue)
-			return string(buf), 0, nil
+			return string(buf), nil
 		case CFDataGetTypeID():
 			length := CFDataGetLength(ptrValue)
 			bin := unsafe.String((*byte)(CFDataGetBytePtr(ptrValue)), length)
 			CFRelease(ptrValue)
-			return bin, 0, nil
+			return bin, nil
 		// PerformanceStatistics
 		case CFDictionaryGetTypeID():
 			cfValue := CFDictionaryGetValue(ptrValue, dictKey)
 			if cfValue != nil {
 				var value int
 				if CFNumberGetValue(uintptr(cfValue), kCFNumberIntType, uintptr(unsafe.Pointer(&value))) {
-					return "", value, nil
+					return value, nil
 				} else {
-					return "", 0, fmt.Errorf("failed to exec CFNumberGetValue")
+					return nil, fmt.Errorf("failed to exec CFNumberGetValue")
 				}
 			} else {
-				return "", 0, fmt.Errorf("failed to exec CFDictionaryGetValue")
+				return nil, fmt.Errorf("failed to exec CFDictionaryGetValue")
 			}
 		}
 	}
-	return "", 0, fmt.Errorf("failed to exec IORegistryEntrySearchCFProperty")
+	return nil, fmt.Errorf("failed to exec IORegistryEntrySearchCFProperty")
 }
