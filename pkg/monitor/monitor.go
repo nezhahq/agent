@@ -27,7 +27,7 @@ var (
 	Version     string
 	agentConfig *model.AgentConfig
 
-	printf = logger.DefaultLogger.Printf
+	printf = logger.Printf
 )
 
 var (

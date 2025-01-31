@@ -33,10 +33,10 @@ var (
 
 // UpdateIP 按设置时间间隔更新IP地址的缓存
 func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
-	logger.DefaultLogger.Println("正在更新本地缓存IP信息")
+	logger.Println("正在更新本地缓存IP信息")
 
 	if retryTimes > 2 && time.Now().Before(latestRetryAt.Add(latestRetryAt.Sub(failedStartedAt)*time.Duration(2))) {
-		logger.DefaultLogger.Println("IP地址获取失败次数过多，fallback到agent连接IP")
+		logger.Println("IP地址获取失败次数过多，fallback到agent连接IP")
 		return &pb.GeoIP{
 			Use6: false,
 			Ip: &pb.IP{

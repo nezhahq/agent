@@ -75,28 +75,6 @@ func (c *AgentConfig) Read(path string) error {
 		return err
 	}
 
-	if c.ReportDelay == 0 {
-		c.ReportDelay = 3
-	}
-
-	if c.IPReportPeriod == 0 {
-		c.IPReportPeriod = 1800
-	} else if c.IPReportPeriod < 30 {
-		c.IPReportPeriod = 30
-	}
-
-	if c.Server == "" {
-		return errors.New("server address should not be empty")
-	}
-
-	if c.ClientSecret == "" {
-		return errors.New("client_secret must be specified")
-	}
-
-	if c.ReportDelay < 1 || c.ReportDelay > 4 {
-		return errors.New("report-delay ranges from 1-4")
-	}
-
 	if c.UUID == "" {
 		if uuid, err := uuid.GenerateUUID(); err == nil {
 			c.UUID = uuid
@@ -106,7 +84,7 @@ func (c *AgentConfig) Read(path string) error {
 		}
 	}
 
-	return nil
+	return ValidateConfig(c, false)
 }
 
 func (c *AgentConfig) Save() error {
@@ -121,6 +99,56 @@ func (c *AgentConfig) Save() error {
 	}
 
 	return os.WriteFile(c.filePath, data, 0600)
+}
+
+func (c *AgentConfig) Apply(new *AgentConfig) {
+	c.Debug = new.Debug
+	c.HardDrivePartitionAllowlist = new.HardDrivePartitionAllowlist
+	c.NICAllowlist = new.NICAllowlist
+	c.GPU = new.GPU
+	c.Temperature = new.Temperature
+	c.SkipConnectionCount = new.SkipConnectionCount
+	c.SkipProcsCount = new.SkipProcsCount
+	c.DisableAutoUpdate = new.DisableAutoUpdate
+	c.DisableForceUpdate = new.DisableForceUpdate
+	c.DisableCommandExecute = new.DisableCommandExecute
+	c.ReportDelay = new.ReportDelay
+	c.DisableNat = new.DisableNat
+	c.DisableSendQuery = new.DisableSendQuery
+	c.IPReportPeriod = new.IPReportPeriod
+	c.SelfUpdatePeriod = new.SelfUpdatePeriod
+}
+
+func ValidateConfig(c *AgentConfig, isRemoteEdit bool) error {
+	if c.ReportDelay == 0 {
+		c.ReportDelay = 3
+	}
+
+	if c.IPReportPeriod == 0 {
+		c.IPReportPeriod = 1800
+	} else if c.IPReportPeriod < 30 {
+		c.IPReportPeriod = 30
+	}
+
+	if c.ReportDelay < 1 || c.ReportDelay > 4 {
+		return errors.New("report-delay ranges from 1-4")
+	}
+
+	if !isRemoteEdit {
+		if c.Server == "" {
+			return errors.New("server address should not be empty")
+		}
+
+		if c.ClientSecret == "" {
+			return errors.New("client_secret must be specified")
+		}
+
+		if _, err := uuid.ParseUUID(c.UUID); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type kubeyaml struct{}

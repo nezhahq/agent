@@ -59,8 +59,9 @@ var (
 	lastReportHostInfo    time.Time
 	lastReportIPInfo      time.Time
 
-	hostStatus atomic.Bool
-	ipStatus   atomic.Bool
+	hostStatus   atomic.Bool
+	ipStatus     atomic.Bool
+	reloadStatus atomic.Bool
 
 	dnsResolver = &net.Resolver{PreferGo: true}
 	httpClient  = &http.Client{
@@ -76,11 +77,13 @@ var (
 		Timeout:   time.Second * 30,
 		Transport: &http3.RoundTripper{},
 	}
+
+	reloadSigChan = make(chan struct{})
 )
 
 var (
-	println = logger.DefaultLogger.Println
-	printf  = logger.DefaultLogger.Printf
+	println = logger.Println
+	printf  = logger.Printf
 )
 
 const (
@@ -271,7 +274,6 @@ func run() {
 
 	retry := func() {
 		initialized = false
-		println("Error to close connection ...")
 		if conn != nil {
 			conn.Close()
 		}
@@ -313,8 +315,9 @@ func run() {
 
 		errCh := make(chan error)
 
+		wCtx, wCancel := context.WithCancel(context.Background())
 		// 执行 Task
-		tasks, err := client.RequestTask(context.Background())
+		tasks, err := client.RequestTask(wCtx)
 		if err != nil {
 			printf("请求任务失败: %v", err)
 			retry()
@@ -322,7 +325,7 @@ func run() {
 		}
 		go receiveTasksDaemon(tasks, errCh)
 
-		reportState, err := client.ReportSystemState(context.Background())
+		reportState, err := client.ReportSystemState(wCtx)
 		if err != nil {
 			printf("上报状态信息失败: %v", err)
 			retry()
@@ -330,14 +333,23 @@ func run() {
 		}
 		go reportStateDaemon(reportState, errCh)
 
-		for i := 0; i < 2; i++ {
-			err = <-errCh
-			if i == 0 {
-				tasks.CloseSend()
-				reportState.CloseSend()
+		for i := 0; i < 2; {
+			select {
+			case <-reloadSigChan:
+				println("Reloading...")
+				wCancel()
+			case err := <-errCh:
+				if i == 0 {
+					tasks.CloseSend()
+					reportState.CloseSend()
+					println("Error to close connection ...")
+				}
+				i++
+				printf("worker exit to main: %v", err)
 			}
-			printf("worker exit to main: %v", err)
 		}
+
+		wCancel()
 		close(errCh)
 
 		retry()
@@ -403,7 +415,7 @@ func runService(action string, path string) {
 
 	err = s.Run()
 	if err != nil {
-		logger.DefaultLogger.Error(err)
+		logger.Error(err)
 	}
 }
 
@@ -456,6 +468,10 @@ func doTask(task *pb.Task) *pb.TaskResult {
 	case model.TaskTypeFM:
 		handleFMTask(task)
 		return nil
+	case model.TaskTypeReportConfig:
+		handleReportConfigTask(&result)
+	case model.TaskTypeApplyConfig:
+		handleApplyConfigTask(task)
 	case model.TaskTypeKeepalive:
 	default:
 		printf("不支持的任务: %v", task)
@@ -798,6 +814,68 @@ func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
 	result.Delay = float32(time.Since(startedAt).Seconds())
 }
 
+func handleReportConfigTask(result *pb.TaskResult) {
+	if agentConfig.DisableCommandExecute {
+		result.Data = "此 Agent 已禁止命令执行"
+		return
+	}
+
+	if reloadStatus.Load() {
+		result.Data = "another reload is in process"
+		return
+	}
+
+	println("Executing Report Config Task")
+
+	c, err := util.Json.Marshal(agentConfig)
+	if err != nil {
+		result.Data = err.Error()
+		return
+	}
+
+	result.Data = string(c)
+	result.Successful = true
+}
+
+func handleApplyConfigTask(task *pb.Task) {
+	if agentConfig.DisableCommandExecute {
+		return
+	}
+
+	if !reloadStatus.CompareAndSwap(false, true) {
+		return
+	}
+
+	println("Executing Apply Config Task")
+
+	var tmpConfig model.AgentConfig
+	json := []byte(task.GetData())
+	if err := util.Json.Unmarshal(json, &tmpConfig); err != nil {
+		printf("Validate Config failed: %v", err)
+		reloadStatus.Store(false)
+		return
+	}
+
+	if err := model.ValidateConfig(&tmpConfig, true); err != nil {
+		printf("Validate Config failed: %v", err)
+		reloadStatus.Store(false)
+		return
+	}
+
+	println("Will reload workers in 30 seconds")
+	time.AfterFunc(time.Second*30, func() {
+		println("Applying new configuration...")
+		agentConfig.Apply(&tmpConfig)
+		agentConfig.Save()
+		geoipReported = false
+		logger.SetEnable(agentConfig.Debug)
+		monitor.InitConfig(&agentConfig)
+		monitor.CustomEndpoints = agentConfig.CustomIPApi
+		reloadStatus.Store(false)
+		reloadSigChan <- struct{}{}
+	})
+}
+
 type WindowSize struct {
 	Cols uint32
 	Rows uint32
@@ -1022,11 +1100,11 @@ func ioStreamKeepAlive(ctx context.Context, stream pb.NezhaService_IOStreamClien
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("IOStream KeepAlive stopped: %v", ctx.Err())
+			printf("IOStream KeepAlive stopped: %v", ctx.Err())
 			return
 		case <-ticker.C:
 			if err := stream.Send(&pb.IOStreamData{Data: []byte{}}); err != nil {
-				log.Printf("IOStream KeepAlive failed: %v", err)
+				printf("IOStream KeepAlive failed: %v", err)
 				return
 			}
 		}
