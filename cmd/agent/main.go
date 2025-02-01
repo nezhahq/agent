@@ -333,11 +333,13 @@ func run() {
 		}
 		go reportStateDaemon(reportState, errCh)
 
+		var canceled bool
 		for i := 0; i < 2; {
 			select {
 			case <-reloadSigChan:
 				println("Reloading...")
 				wCancel()
+				canceled = true
 			case err := <-errCh:
 				if i == 0 {
 					tasks.CloseSend()
@@ -349,7 +351,9 @@ func run() {
 			}
 		}
 
-		wCancel()
+		if !canceled {
+			wCancel()
+		}
 		close(errCh)
 
 		retry()
@@ -862,8 +866,8 @@ func handleApplyConfigTask(task *pb.Task) {
 		return
 	}
 
-	println("Will reload workers in 30 seconds")
-	time.AfterFunc(time.Second*30, func() {
+	println("Will reload workers in 10 seconds")
+	time.AfterFunc(10*time.Second, func() {
 		println("Applying new configuration...")
 		agentConfig.Apply(&tmpConfig)
 		agentConfig.Save()
