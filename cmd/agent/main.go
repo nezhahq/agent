@@ -870,8 +870,8 @@ func handleApplyConfigTask(task *pb.Task) {
 	println("Will reload workers in 10 seconds")
 	time.AfterFunc(10*time.Second, func() {
 		println("Applying new configuration...")
-		obj.ForEach(func(k, v gjson.Result) bool {
-			agentConfig.Apply(k.String(), &v)
+		obj.ForEach(func(k, _ gjson.Result) bool {
+			agentConfig.Apply(k.String(), &tmpConfig)
 			return true
 		})
 		agentConfig.Save()

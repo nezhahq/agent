@@ -20,7 +20,6 @@ import (
 type ConfigField struct {
 	Name     string
 	JSONName string
-	Type     string
 }
 
 var structName string
@@ -71,18 +70,6 @@ func Parse(f *ast.File) []*ConfigField {
 				for _, field := range s.Fields.List {
 					var fieldName string
 					var tagValue string
-					var typ string
-
-					switch ft := field.Type.(type) {
-					case *ast.Ident:
-						typ = ft.Name
-					case *ast.ArrayType:
-						typ = "array"
-					case *ast.MapType:
-						typ = "map"
-					default:
-						return false
-					}
 
 					fieldName = field.Names[0].Name
 					if field.Tag == nil {
@@ -95,10 +82,13 @@ func Parse(f *ast.File) []*ConfigField {
 					}
 
 					tagValue = strings.SplitN(tag, ",", 2)[0]
+					if tagValue == "-" {
+						return false
+					}
+
 					cf = append(cf, &ConfigField{
 						Name:     fieldName,
 						JSONName: tagValue,
-						Type:     typ,
 					})
 				}
 			}
@@ -112,78 +102,34 @@ func Parse(f *ast.File) []*ConfigField {
 func MakeStmt(cf []*ConfigField) *ast.SwitchStmt {
 	var cases []ast.Stmt
 	for _, f := range cf {
-		switch f.Type {
-		case "map", "array":
-			stmt := &ast.CaseClause{
-				List: []ast.Expr{
-					&ast.BasicLit{
-						Kind:  token.STRING,
-						Value: fmt.Sprintf(`"%s"`, f.JSONName),
-					},
+		stmt := &ast.CaseClause{
+			List: []ast.Expr{
+				&ast.BasicLit{
+					Kind:  token.STRING,
+					Value: fmt.Sprintf(`"%s"`, f.JSONName),
 				},
-				Body: []ast.Stmt{
-					&ast.ReturnStmt{
-						Results: []ast.Expr{
-							&ast.CallExpr{
-								Fun: ast.NewIdent("util.Json.Unmarshal"),
-								Args: []ast.Expr{
-									&ast.CallExpr{
-										Fun: ast.NewIdent("[]byte"),
-										Args: []ast.Expr{
-											&ast.SelectorExpr{
-												X:   ast.NewIdent("v"),
-												Sel: ast.NewIdent("Raw"),
-											},
-										},
-									},
-									&ast.UnaryExpr{
-										Op: token.AND,
-										X: &ast.SelectorExpr{
-											X:   ast.NewIdent("c"),
-											Sel: ast.NewIdent(f.Name),
-										},
-									},
-								},
-							},
+			},
+			Body: []ast.Stmt{
+				&ast.AssignStmt{
+					Lhs: []ast.Expr{
+						&ast.SelectorExpr{
+							X:   ast.NewIdent("c"),
+							Sel: ast.NewIdent(f.Name),
+						},
+					},
+					Tok: token.ASSIGN,
+					Rhs: []ast.Expr{
+						&ast.SelectorExpr{
+							X:   ast.NewIdent("v"),
+							Sel: ast.NewIdent(f.Name),
 						},
 					},
 				},
-			}
-			cases = append(cases, stmt)
-		default:
-			stmt := &ast.CaseClause{
-				List: []ast.Expr{
-					&ast.BasicLit{
-						Kind:  token.STRING,
-						Value: fmt.Sprintf(`"%s"`, f.JSONName),
-					},
-				},
-				Body: []ast.Stmt{
-					&ast.AssignStmt{
-						Lhs: []ast.Expr{
-							&ast.SelectorExpr{
-								X:   ast.NewIdent("c"),
-								Sel: ast.NewIdent(f.Name),
-							},
-						},
-						Tok: token.ASSIGN,
-						Rhs: []ast.Expr{
-							&ast.CallExpr{
-								Fun: ast.NewIdent(f.Type),
-								Args: []ast.Expr{
-									&ast.CallExpr{
-										Fun:  ast.NewIdent(fmt.Sprintf("v.%s", toGjsonMethod(f.Type))),
-										Args: []ast.Expr{},
-									},
-								},
-							},
-						},
-					},
-				},
-			}
-			cases = append(cases, stmt)
+			},
 		}
+		cases = append(cases, stmt)
 	}
+
 	cases = append(cases, &ast.CaseClause{
 		List: nil,
 		Body: []ast.Stmt{
@@ -242,7 +188,7 @@ func Print(stmt *ast.SwitchStmt) (io.Reader, error) {
 							ast.NewIdent("v"),
 						},
 						Type: &ast.StarExpr{
-							X: ast.NewIdent("gjson.Result"),
+							X: ast.NewIdent(structName),
 						},
 					},
 				},
@@ -280,18 +226,6 @@ func Print(stmt *ast.SwitchStmt) (io.Reader, error) {
 							Value: `"errors"`,
 						},
 					},
-					&ast.ImportSpec{
-						Path: &ast.BasicLit{
-							Kind:  token.STRING,
-							Value: `"github.com/tidwall/gjson"`,
-						},
-					},
-					&ast.ImportSpec{
-						Path: &ast.BasicLit{
-							Kind:  token.STRING,
-							Value: `"github.com/nezhahq/agent/pkg/util"`,
-						},
-					},
 				},
 			},
 			funcDecl,
@@ -305,19 +239,4 @@ func Print(stmt *ast.SwitchStmt) (io.Reader, error) {
 	}
 
 	return &buf, nil
-}
-
-func toGjsonMethod(typ string) string {
-	switch typ {
-	case "string":
-		return "String"
-	case "uint", "uint32", "uint64":
-		return "Uint"
-	case "int", "int32", "int64":
-		return "Int"
-	case "bool":
-		return "Bool"
-	default:
-		return ""
-	}
 }

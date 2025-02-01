@@ -2,62 +2,58 @@
 
 package model
 
-import (
-	"errors"
-	"github.com/tidwall/gjson"
-	"github.com/nezhahq/agent/pkg/util"
-)
+import "errors"
 
-func (c *AgentConfig) Apply(field string, v *gjson.Result) error {
+func (c *AgentConfig) Apply(field string, v *AgentConfig) error {
 	switch field {
 	case "debug":
-		c.Debug = bool(v.Bool())
+		c.Debug = v.Debug
 	case "server":
-		c.Server = string(v.String())
+		c.Server = v.Server
 	case "client_secret":
-		c.ClientSecret = string(v.String())
+		c.ClientSecret = v.ClientSecret
 	case "uuid":
-		c.UUID = string(v.String())
+		c.UUID = v.UUID
 	case "hard_drive_partition_allowlist":
-		return util.Json.Unmarshal([]byte(v.Raw), &c.HardDrivePartitionAllowlist)
+		c.HardDrivePartitionAllowlist = v.HardDrivePartitionAllowlist
 	case "nic_allowlist":
-		return util.Json.Unmarshal([]byte(v.Raw), &c.NICAllowlist)
+		c.NICAllowlist = v.NICAllowlist
 	case "dns":
-		return util.Json.Unmarshal([]byte(v.Raw), &c.DNS)
+		c.DNS = v.DNS
 	case "gpu":
-		c.GPU = bool(v.Bool())
+		c.GPU = v.GPU
 	case "temperature":
-		c.Temperature = bool(v.Bool())
+		c.Temperature = v.Temperature
 	case "skip_connection_count":
-		c.SkipConnectionCount = bool(v.Bool())
+		c.SkipConnectionCount = v.SkipConnectionCount
 	case "skip_procs_count":
-		c.SkipProcsCount = bool(v.Bool())
+		c.SkipProcsCount = v.SkipProcsCount
 	case "disable_auto_update":
-		c.DisableAutoUpdate = bool(v.Bool())
+		c.DisableAutoUpdate = v.DisableAutoUpdate
 	case "disable_force_update":
-		c.DisableForceUpdate = bool(v.Bool())
+		c.DisableForceUpdate = v.DisableForceUpdate
 	case "disable_command_execute":
-		c.DisableCommandExecute = bool(v.Bool())
+		c.DisableCommandExecute = v.DisableCommandExecute
 	case "report_delay":
-		c.ReportDelay = uint32(v.Uint())
+		c.ReportDelay = v.ReportDelay
 	case "tls":
-		c.TLS = bool(v.Bool())
+		c.TLS = v.TLS
 	case "insecure_tls":
-		c.InsecureTLS = bool(v.Bool())
+		c.InsecureTLS = v.InsecureTLS
 	case "use_ipv6_country_code":
-		c.UseIPv6CountryCode = bool(v.Bool())
+		c.UseIPv6CountryCode = v.UseIPv6CountryCode
 	case "use_gitee_to_upgrade":
-		c.UseGiteeToUpgrade = bool(v.Bool())
+		c.UseGiteeToUpgrade = v.UseGiteeToUpgrade
 	case "disable_nat":
-		c.DisableNat = bool(v.Bool())
+		c.DisableNat = v.DisableNat
 	case "disable_send_query":
-		c.DisableSendQuery = bool(v.Bool())
+		c.DisableSendQuery = v.DisableSendQuery
 	case "ip_report_period":
-		c.IPReportPeriod = uint32(v.Uint())
+		c.IPReportPeriod = v.IPReportPeriod
 	case "self_update_period":
-		c.SelfUpdatePeriod = uint32(v.Uint())
+		c.SelfUpdatePeriod = v.SelfUpdatePeriod
 	case "custom_ip_api":
-		return util.Json.Unmarshal([]byte(v.Raw), &c.CustomIPApi)
+		c.CustomIPApi = v.CustomIPApi
 	default:
 		return errors.New("field name is not valid")
 	}
