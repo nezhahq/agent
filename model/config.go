@@ -16,6 +16,7 @@ import (
 	"github.com/nezhahq/agent/pkg/util"
 )
 
+//go:generate go run gen/gen.go -type=AgentConfig
 type AgentConfig struct {
 	Debug bool `koanf:"debug" json:"debug"`
 
@@ -99,24 +100,6 @@ func (c *AgentConfig) Save() error {
 	}
 
 	return os.WriteFile(c.filePath, data, 0600)
-}
-
-func (c *AgentConfig) Apply(new *AgentConfig) {
-	c.Debug = new.Debug
-	c.HardDrivePartitionAllowlist = new.HardDrivePartitionAllowlist
-	c.NICAllowlist = new.NICAllowlist
-	c.GPU = new.GPU
-	c.Temperature = new.Temperature
-	c.SkipConnectionCount = new.SkipConnectionCount
-	c.SkipProcsCount = new.SkipProcsCount
-	c.DisableAutoUpdate = new.DisableAutoUpdate
-	c.DisableForceUpdate = new.DisableForceUpdate
-	c.DisableCommandExecute = new.DisableCommandExecute
-	c.ReportDelay = new.ReportDelay
-	c.DisableNat = new.DisableNat
-	c.DisableSendQuery = new.DisableSendQuery
-	c.IPReportPeriod = new.IPReportPeriod
-	c.SelfUpdatePeriod = new.SelfUpdatePeriod
 }
 
 func ValidateConfig(c *AgentConfig, isRemoteEdit bool) error {
