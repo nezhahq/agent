@@ -42,8 +42,7 @@ type AgentConfig struct {
 	DisableSendQuery            bool            `koanf:"disable_send_query" json:"disable_send_query"`           // 关闭发送TCP/ICMP/HTTP请求
 	IPReportPeriod              uint32          `koanf:"ip_report_period" json:"ip_report_period"`               // IP上报周期
 	SelfUpdatePeriod            uint32          `koanf:"self_update_period" json:"self_update_period"`           // 自动更新周期
-	CustomIPApi                 []string        `koanf:"custom_ip_api" json:"custom_ip_api,omitempty"`           // 自定义 IP API
-	ReloadDelay                 uint32          `koanf:"reload_delay" json:"reload_delay"`                       // 重载间隔
+	CustomIPApi                 []string        `koanf:"custom_ip_api" json:"custom_ip_api,omitempty"`           // 自定义 IP API                      // 重载间隔
 
 	k        *koanf.Koanf `json:"-"`
 	filePath string       `json:"-"`
@@ -133,10 +132,6 @@ func ValidateConfig(c *AgentConfig, isRemoteEdit bool) error {
 
 	if c.ReportDelay < 1 || c.ReportDelay > 4 {
 		return errors.New("report-delay ranges from 1-4")
-	}
-
-	if c.ReloadDelay == 0 {
-		c.ReloadDelay = 30
 	}
 
 	if !isRemoteEdit {

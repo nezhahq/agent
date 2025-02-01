@@ -24,7 +24,7 @@ require (
 	github.com/prometheus-community/pro-bing v0.4.1
 	github.com/quic-go/quic-go v0.40.1
 	github.com/refraction-networking/utls v1.6.3
-	github.com/shirou/gopsutil/v4 v4.24.12
+	github.com/shirou/gopsutil/v4 v4.25.1
 	github.com/tidwall/gjson v1.18.0
 	github.com/urfave/cli/v2 v2.27.5
 	golang.org/x/net v0.32.0

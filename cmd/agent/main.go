@@ -866,8 +866,8 @@ func handleApplyConfigTask(task *pb.Task) {
 		return
 	}
 
-	printf("Will reload workers in %d seconds", agentConfig.ReloadDelay)
-	time.AfterFunc(time.Duration(agentConfig.ReloadDelay)*time.Second, func() {
+	println("Will reload workers in 30 seconds")
+	time.AfterFunc(30*time.Second, func() {
 		println("Applying new configuration...")
 		agentConfig.Apply(&tmpConfig)
 		agentConfig.Save()
