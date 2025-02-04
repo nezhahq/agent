@@ -4,3 +4,4 @@
 /cmd/agent/config.yml
 *.pprof
 dist
+/model/zconfig.go
