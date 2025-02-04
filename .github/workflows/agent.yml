@@ -47,10 +47,6 @@ jobs:
 
     name: Build artifacts
     runs-on: ubuntu-latest
-    env:
-      GOOS: ${{ matrix.goos }}
-      GOARCH: ${{ matrix.goarch }}
-      GOMIPS: ${{ matrix.gomips }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,31 +57,46 @@ jobs:
         with:
           go-version: "1.20.14"
 
+      - name: Generate
+        run: |
+          go generate ./...
+
       - name: Build Test
         if: github.event_name != 'push' || !contains(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@v6
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOMIPS: ${{ matrix.gomips }}
         with:
           distribution: goreleaser
-          version: '~> v2'
-          args: build --single-target --clean --snapshot
+          version: "~> v2"
+          args: build --single-target --clean --skip=validate --snapshot
 
       - name: Build
         if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@v6
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOMIPS: ${{ matrix.gomips }}
         with:
           distribution: goreleaser
-          version: '~> v2'
-          args: build --single-target --clean
+          version: "~> v2"
+          args: build --single-target --clean --skip=validate
 
       - name: Archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
         run: zip -jr dist/nezha-agent_${GOOS}_${GOARCH}.zip dist/*/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nezha-agent_${{ env.GOOS }}_${{ env.GOARCH }}
+          name: nezha-agent_${{ matrix.goos }}_${{ matrix.goarch }}
           path: |
-            ./dist/nezha-agent_${{ env.GOOS }}_${{ env.GOARCH }}.zip
+            ./dist/nezha-agent_${{ matrix.goos }}_${{ matrix.goarch }}.zip
 
   release:
     runs-on: ubuntu-latest

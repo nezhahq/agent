@@ -28,6 +28,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	utls "github.com/refraction-networking/utls"
 	"github.com/shirou/gopsutil/v4/host"
+	"github.com/tidwall/gjson"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -853,12 +854,12 @@ func handleApplyConfigTask(task *pb.Task) {
 	println("Executing Apply Config Task")
 
 	var tmpConfig model.AgentConfig
-	json := []byte(task.GetData())
-	if err := util.Json.Unmarshal(json, &tmpConfig); err != nil {
+	if err := util.Json.Unmarshal([]byte(task.GetData()), &tmpConfig); err != nil {
 		printf("Validate Config failed: %v", err)
 		reloadStatus.Store(false)
 		return
 	}
+	obj := gjson.Parse(task.GetData())
 
 	if err := model.ValidateConfig(&tmpConfig, true); err != nil {
 		printf("Validate Config failed: %v", err)
@@ -869,7 +870,10 @@ func handleApplyConfigTask(task *pb.Task) {
 	println("Will reload workers in 10 seconds")
 	time.AfterFunc(10*time.Second, func() {
 		println("Applying new configuration...")
-		agentConfig.Apply(&tmpConfig)
+		obj.ForEach(func(k, _ gjson.Result) bool {
+			agentConfig.Apply(k.String(), &tmpConfig)
+			return true
+		})
 		agentConfig.Save()
 		geoipReported = false
 		logger.SetEnable(agentConfig.Debug)
