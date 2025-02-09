@@ -530,15 +530,14 @@ func reportHost() bool {
 		return false
 	}
 	defer hostStatus.Store(false)
-
 	if client != nil && initialized {
 		receipt, err := client.ReportSystemInfo2(context.Background(), monitor.GetHost().PB())
-		if err == nil {
-			geoipReported = receipt.GetData() == prevDashboardBootTime
-			prevDashboardBootTime = receipt.GetData()
+		if err != nil {
+			printf("ReportSystemInfo2 error: %v", err)
+			return false
 		}
+		geoipReported = geoipReported && prevDashboardBootTime > 0 && receipt.GetData() == prevDashboardBootTime
 	}
-
 	return true
 }
 
@@ -565,6 +564,8 @@ func reportGeoIP(use6, forceUpdate bool) bool {
 	if err != nil {
 		return false
 	}
+
+	prevDashboardBootTime = geoip.GetDashboardBootTime()
 
 	monitor.CachedCountryCode = geoip.GetCountryCode()
 	monitor.GeoQueryIPChanged = false

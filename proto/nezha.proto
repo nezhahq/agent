@@ -75,6 +75,7 @@ message GeoIP {
   bool use6 = 1;
   IP ip = 2;
   string country_code = 3;
+  uint64 dashboard_boot_time = 4;
 }
 
 message IP {
