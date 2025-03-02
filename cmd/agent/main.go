@@ -300,6 +300,7 @@ func run() {
 			continue
 		}
 		client = pb.NewNezhaServiceClient(conn)
+		printf("Connection to %s established", agentConfig.Server)
 
 		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
 		dashboardBootTimeReceipt, err = client.ReportSystemInfo2(timeOutCtx, monitor.GetHost().PB())
@@ -498,13 +499,36 @@ func reportStateDaemon(stateClient pb.NezhaService_ReportSystemStateClient, errC
 	}
 }
 
+func recvTimeout(statClient pb.NezhaService_ReportSystemStateClient) error {
+	timeout := time.NewTimer(time.Second * 10)
+	recvChan := make(chan error, 1)
+	go func() {
+		_, err := statClient.Recv()
+		recvChan <- err
+		close(recvChan)
+	}()
+
+	select {
+	case <-timeout.C:
+		return errors.New("recv timeout")
+	case err := <-recvChan:
+		if !timeout.Stop() {
+			<-timeout.C
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip time.Time) (time.Time, time.Time, error) {
 	if initialized {
 		monitor.TrackNetworkSpeed()
 		if err := statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB()); err != nil {
 			return host, ip, err
 		}
-		_, err := statClient.Recv()
+		err := recvTimeout(statClient)
 		if err != nil {
 			return host, ip, err
 		}
@@ -514,6 +538,7 @@ func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip ti
 		if reportHost() {
 			host = time.Now()
 		}
+		printf("Host reported")
 	}
 	// 更新IP信息
 	if time.Since(ip) > time.Second*time.Duration(agentConfig.IPReportPeriod) || !geoipReported {
@@ -635,12 +660,10 @@ func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
 		result.Data = err.Error()
 		return
 	}
-	if strings.IndexByte(ipAddr, ':') != -1 {
-		ipAddr = fmt.Sprintf("[%s]", ipAddr)
-	}
-	printf("TCP-Ping Task: Pinging %s:%s", ipAddr, port)
+	addr := net.JoinHostPort(ipAddr, port)
+	printf("TCP-Ping Task: Pinging %s", addr)
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%s", ipAddr, port), time.Second*10)
+	conn, err := net.DialTimeout("tcp", addr, time.Second*10)
 	if err != nil {
 		result.Data = err.Error()
 	} else {
@@ -703,7 +726,7 @@ func checkHttpResp(taskUrl string, start time.Time, resp *http.Response, err err
 		// 检查 HTTP Response 状态
 		result.Delay = float32(time.Since(start).Microseconds()) / 1000.0
 		if resp.StatusCode > 399 || resp.StatusCode < 200 {
-			err = errors.New("\n应用错误：" + resp.Status)
+			err = errors.New("\n应用错误: " + resp.Status)
 		}
 	}
 	if err == nil {
