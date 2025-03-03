@@ -89,7 +89,7 @@ func (c *AgentConfig) Read(path string) error {
 }
 
 func (c *AgentConfig) Save() error {
-	data, err := c.k.Marshal(new((kubeyaml)))
+	data, err := yaml.Marshal(c)
 	if err != nil {
 		return err
 	}
