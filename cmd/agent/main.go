@@ -499,36 +499,13 @@ func reportStateDaemon(stateClient pb.NezhaService_ReportSystemStateClient, errC
 	}
 }
 
-func recvTimeout(statClient pb.NezhaService_ReportSystemStateClient) error {
-	timeout := time.NewTimer(time.Second * 10)
-	recvChan := make(chan error, 1)
-	go func() {
-		_, err := statClient.Recv()
-		recvChan <- err
-		close(recvChan)
-	}()
-
-	select {
-	case <-timeout.C:
-		return errors.New("recv timeout")
-	case err := <-recvChan:
-		if !timeout.Stop() {
-			<-timeout.C
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip time.Time) (time.Time, time.Time, error) {
 	if initialized {
 		monitor.TrackNetworkSpeed()
 		if err := statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB()); err != nil {
 			return host, ip, err
 		}
-		err := recvTimeout(statClient)
+		_, err := statClient.Recv()
 		if err != nil {
 			return host, ip, err
 		}
