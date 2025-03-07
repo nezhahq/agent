@@ -317,7 +317,7 @@ func run() {
 
 		errCh := make(chan error)
 
-		wCtx, wCancel := context.WithCancel(context.Background())
+		wCtx, wCancel := context.WithTimeout(context.Background(), networkTimeOut)
 		// 执行 Task
 		tasks, err := client.RequestTask(wCtx)
 		if err != nil {
