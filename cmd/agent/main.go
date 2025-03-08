@@ -573,6 +573,7 @@ func doSelfUpdate(useLocalVersion bool) {
 	if useLocalVersion {
 		v = semver.MustParse(version)
 	}
+	agentProcs := util.FindProcessByCmd(executablePath)
 	printf("检查更新: %v", v)
 	var latest *selfupdate.Release
 	var err error
@@ -601,7 +602,7 @@ func doSelfUpdate(useLocalVersion bool) {
 	}
 	if !latest.Version.Equals(v) {
 		printf("已经更新至: %v, 正在结束进程", latest.Version)
-		util.KillProcessByCmd(executablePath)
+		util.KillProcesses(agentProcs)
 		os.Exit(1)
 	}
 }
