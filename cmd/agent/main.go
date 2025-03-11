@@ -319,7 +319,9 @@ func run() {
 		wCtx, wCancel := context.WithCancel(context.Background())
 
 		// 执行 Task
-		tasks, err := client.RequestTask(wCtx)
+		tasks, err := doWithTimeout(func() (pb.NezhaService_RequestTaskClient, error) {
+			return client.RequestTask(wCtx)
+		}, networkTimeOut)
 		if err != nil {
 			printf("请求任务失败: %v", err)
 			wCancel()
@@ -328,7 +330,9 @@ func run() {
 		}
 		go receiveTasksDaemon(tasks, wCancel)
 
-		reportState, err := client.ReportSystemState(wCtx)
+		reportState, err := doWithTimeout(func() (pb.NezhaService_ReportSystemStateClient, error) {
+			return client.ReportSystemState(wCtx)
+		}, networkTimeOut)
 		if err != nil {
 			printf("上报状态信息失败: %v", err)
 			wCancel()
@@ -416,7 +420,9 @@ func receiveTasksDaemon(tasks pb.NezhaService_RequestTaskClient, cancel context.
 	var task *pb.Task
 	var err error
 	for {
-		task, err = tasks.Recv()
+		task, err = doWithTimeout(func() (*pb.Task, error) {
+			return tasks.Recv()
+		}, time.Second*30)
 		if err != nil {
 			printf("receiveTasks exit: %v", err)
 			cancel()
@@ -479,7 +485,10 @@ func doTask(task *pb.Task) *pb.TaskResult {
 func reportStateDaemon(stateClient pb.NezhaService_ReportSystemStateClient, cancel context.CancelFunc) {
 	var err error
 	for {
-		lastReportHostInfo, lastReportIPInfo, err = reportState(stateClient, lastReportHostInfo, lastReportIPInfo)
+		_, err = doWithTimeout(func() (*int, error) {
+			lastReportHostInfo, lastReportIPInfo, err = reportState(stateClient, lastReportHostInfo, lastReportIPInfo)
+			return nil, err
+		}, time.Second*10)
 		if err != nil {
 			printf("reportStateDaemon exit: %v", err)
 			cancel()
@@ -1111,4 +1120,21 @@ func ioStreamKeepAlive(ctx context.Context, stream pb.NezhaService_IOStreamClien
 			}
 		}
 	}
+}
+
+func doWithTimeout[T any](fn func() (T, error), timeout time.Duration) (T, error) {
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	var t T
+	var err error
+	go func() {
+		defer cancel()
+		t, err = fn()
+	}()
+	<-timeoutCtx.Done()
+	if timeoutCtx.Err() != context.Canceled {
+		var zero T
+		return zero, fmt.Errorf("context error: %v, fn err: %v", timeoutCtx.Err(), err)
+	}
+	return t, err
 }
