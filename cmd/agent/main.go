@@ -1133,8 +1133,7 @@ func doWithTimeout[T any](fn func() (T, error), timeout time.Duration) (T, error
 	}()
 	<-timeoutCtx.Done()
 	if timeoutCtx.Err() != context.Canceled {
-		var zero T
-		return zero, fmt.Errorf("context error: %v, fn err: %v", timeoutCtx.Err(), err)
+		return t, fmt.Errorf("context error: %v, fn err: %v", timeoutCtx.Err(), err)
 	}
 	return t, err
 }
