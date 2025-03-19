@@ -16,10 +16,8 @@ import (
 	"github.com/nezhahq/agent/pkg/monitor/conn"
 	"github.com/nezhahq/agent/pkg/monitor/cpu"
 	"github.com/nezhahq/agent/pkg/monitor/disk"
-	"github.com/nezhahq/agent/pkg/monitor/gpu"
 	"github.com/nezhahq/agent/pkg/monitor/load"
 	"github.com/nezhahq/agent/pkg/monitor/nic"
-	"github.com/nezhahq/agent/pkg/monitor/temperature"
 	"github.com/nezhahq/agent/pkg/util"
 )
 
@@ -94,11 +92,6 @@ func GetHost() *model.Host {
 
 	ctxCpu := context.WithValue(context.Background(), cpu.CPUHostKey, cpuType)
 	ret.CPU = tryHost(ctxCpu, CPU, cpu.GetHost)
-
-	if agentConfig.GPU {
-		ret.GPU = tryHost(context.Background(), GPU, gpu.GetHost)
-	}
-
 	ret.DiskTotal = getDiskTotal()
 
 	mv, err := mem.VirtualMemory()
@@ -169,15 +162,6 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 		}
 	}
 
-	if agentConfig.Temperature {
-		go updateTemperatureStat()
-		ret.Temperatures = temperatureStat
-	}
-
-	if agentConfig.GPU {
-		ret.GPU = tryStat(context.Background(), GPU, gpu.GetState)
-	}
-
 	ret.NetInTransfer, ret.NetOutTransfer = netInTransfer, netOutTransfer
 	ret.NetInSpeed, ret.NetOutSpeed = netInSpeed, netOutSpeed
 	ret.Uptime = uint64(time.Since(cachedBootTime).Seconds())
@@ -238,16 +222,6 @@ func getConns() (tcpConnCount, udpConnCount uint64) {
 	}
 
 	return connStat[0], connStat[1]
-}
-
-func updateTemperatureStat() {
-	if !updateTempStatus.CompareAndSwap(false, true) {
-		return
-	}
-	defer updateTempStatus.Store(false)
-
-	stat := tryStat(context.Background(), Temperatures, temperature.GetState)
-	temperatureStat = stat
 }
 
 type hostStateFunc[T any] func(context.Context) (T, error)

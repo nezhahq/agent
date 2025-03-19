@@ -100,7 +100,6 @@ func EditAgentConfig(configPath string, agentConfig *model.AgentConfig) {
 		Nic         []string `mapstructure:"nic_allowlist" json:"nic_allowlist"`
 		Disk        []string `mapstructure:"hard_drive_partition_allowlist" json:"hard_drive_partition_allowlist"`
 		DNS         string   `mapstructure:"dns" json:"dns"`
-		GPU         bool     `mapstructure:"gpu" json:"gpu"`
 		Temperature bool     `mapstructure:"temperature" json:"temperature"`
 		Debug       bool     `mapstructure:"debug" json:"debug"`
 		UUID        string   `mapstructure:"uuid" json:"uuid"`
@@ -140,9 +139,6 @@ func EditAgentConfig(configPath string, agentConfig *model.AgentConfig) {
 	} else {
 		agentConfig.DNS = []string{}
 	}
-
-	agentConfig.GPU = answers.GPU
-	agentConfig.Temperature = answers.Temperature
 	agentConfig.Debug = answers.Debug
 	agentConfig.UUID = answers.UUID
 

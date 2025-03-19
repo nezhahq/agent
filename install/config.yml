@@ -1,0 +1,20 @@
+client_secret: <-------------- 自己填写------------->
+debug: false
+disable_auto_update: true
+disable_command_execute: true
+disable_force_update: true
+disable_nat: true
+disable_send_query: false
+gpu: false
+insecure_tls: false
+ip_report_period: 1800
+report_delay: 3
+self_update_period: 0
+server: <--------------域名和端口-------------->
+skip_connection_count: false
+skip_procs_count: false
+temperature: false
+tls: true
+use_gitee_to_upgrade: false
+use_ipv6_country_code: false
+uuid: <--------------uuid-------------->

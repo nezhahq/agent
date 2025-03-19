@@ -8,7 +8,6 @@ require (
 	github.com/artdarek/go-unzip v1.0.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/cloudflare/ahocorasick v0.0.0-20240916140611-054963ec9396
-	github.com/creack/pty v1.1.24
 	github.com/dean2021/goss v0.0.0-20230129073947-df90431348f1
 	github.com/ebi-yade/altsvc-go v0.1.1
 	github.com/ebitengine/purego v0.8.2
