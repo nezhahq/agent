@@ -485,10 +485,7 @@ func doTask(task *pb.Task) *pb.TaskResult {
 func reportStateDaemon(stateClient pb.NezhaService_ReportSystemStateClient, cancel context.CancelFunc) {
 	var err error
 	for {
-		_, err = doWithTimeout(func() (*int, error) {
-			lastReportHostInfo, lastReportIPInfo, err = reportState(stateClient, lastReportHostInfo, lastReportIPInfo)
-			return nil, err
-		}, time.Second*10)
+		lastReportHostInfo, lastReportIPInfo, err = reportState(stateClient, lastReportHostInfo, lastReportIPInfo)
 		if err != nil {
 			printf("reportStateDaemon exit: %v", err)
 			cancel()
@@ -504,10 +501,12 @@ func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip ti
 	}
 	if initialized {
 		monitor.TrackNetworkSpeed()
-		if err := statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB()); err != nil {
+		if _, err := doWithTimeout(func() (*pb.Receipt, error) {
+			return nil, statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB())
+		}, time.Second*10); err != nil {
 			return host, ip, err
 		}
-		_, err := statClient.Recv()
+		_, err := doWithTimeout(statClient.Recv, time.Second*10)
 		if err != nil {
 			return host, ip, err
 		}
@@ -534,7 +533,9 @@ func reportHost() bool {
 	}
 	defer hostStatus.Store(false)
 	if client != nil && initialized {
-		receipt, err := client.ReportSystemInfo2(context.Background(), monitor.GetHost().PB())
+		receipt, err := doWithTimeout(func() (*pb.Uint64Receipt, error) {
+			return client.ReportSystemInfo2(context.Background(), monitor.GetHost().PB())
+		}, time.Second*10)
 		if err != nil {
 			printf("ReportSystemInfo2 error: %v", err)
 			return false
@@ -563,7 +564,9 @@ func reportGeoIP(use6, forceUpdate bool) bool {
 		return true
 	}
 
-	geoip, err := client.ReportGeoIP(context.Background(), pbg)
+	geoip, err := doWithTimeout(func() (*pb.GeoIP, error) {
+		return client.ReportGeoIP(context.Background(), pbg)
+	}, time.Second*10)
 	if err != nil {
 		return false
 	}
