@@ -1,23 +1,21 @@
 package util
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"iter"
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
-	"sync"
+	"time"
 
-	jsoniter "github.com/json-iterator/go"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
 const MacOSChromeUA = "nezha-agent/1.0"
-
-var (
-	Json = jsoniter.ConfigCompatibleWithStandardLibrary
-)
 
 func IsWindows() bool {
 	return os.PathSeparator == '\\' && os.PathListSeparator == ';'
@@ -42,51 +40,30 @@ func ContainsStr(slice []string, str string) bool {
 	return false
 }
 
-func RemoveDuplicate[T comparable](sliceList []T) []T {
-	allKeys := make(map[T]struct{})
-	var list []T
-	for _, item := range sliceList {
-		if _, value := allKeys[item]; !value {
-			allKeys[item] = struct{}{}
-			list = append(list, item)
-		}
+func RemoveDuplicate[S ~[]E, E cmp.Ordered](list S) S {
+	if list == nil {
+		return nil
 	}
-	return list
-}
-
-// OnceValue returns a function that invokes f only once and returns the value
-// returned by f. The returned function may be called concurrently.
-//
-// If f panics, the returned function will panic with the same value on every call.
-func OnceValue[T any](f func() T) func() T {
-	var (
-		once   sync.Once
-		valid  bool
-		p      any
-		result T
-	)
-	g := func() {
-		defer func() {
-			p = recover()
-			if !valid {
-				panic(p)
-			}
-		}()
-		result = f()
-		f = nil
-		valid = true
-	}
-	return func() T {
-		once.Do(g)
-		if !valid {
-			panic(p)
-		}
-		return result
-	}
+	out := make([]E, len(list))
+	copy(out, list)
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 func RotateQueue1(start, i, size int) int {
 	return (start + i) % size
+}
+
+func RangeRnd[S ~[]E, E any](s S) iter.Seq2[int, E] {
+	index := int(time.Now().Unix()) % len(s)
+	return func(yield func(int, E) bool) {
+		for i := range len(s) {
+			r := RotateQueue1(index, i, len(s))
+			if !yield(r, s[r]) {
+				break
+			}
+		}
+	}
 }
 
 // LookupIP looks up host using the local resolver.

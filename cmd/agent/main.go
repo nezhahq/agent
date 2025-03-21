@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +13,6 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,11 +21,9 @@ import (
 	"time"
 
 	"github.com/blang/semver"
-	"github.com/ebi-yade/altsvc-go"
 	"github.com/nezhahq/go-github-selfupdate/selfupdate"
 	"github.com/nezhahq/service"
 	ping "github.com/prometheus-community/pro-bing"
-	"github.com/quic-go/quic-go/http3"
 	utls "github.com/refraction-networking/utls"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/tidwall/gjson"
@@ -71,13 +69,6 @@ var (
 		},
 		Timeout: time.Second * 30,
 	}
-	httpClient3 = &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-		Timeout:   time.Second * 30,
-		Transport: &http3.RoundTripper{},
-	}
 
 	reloadSigChan = make(chan struct{})
 )
@@ -108,11 +99,10 @@ func setEnv() {
 		if len(agentConfig.DNS) > 0 {
 			dnsServers = agentConfig.DNS
 		}
-		index := int(time.Now().Unix()) % int(len(dnsServers))
 		var conn net.Conn
 		var err error
-		for i := 0; i < len(dnsServers); i++ {
-			conn, err = d.DialContext(ctx, "udp", dnsServers[util.RotateQueue1(index, i, len(dnsServers))])
+		for _, server := range util.RangeRnd(dnsServers) {
+			conn, err = d.DialContext(ctx, "udp", server)
 			if err == nil {
 				return conn, nil
 			}
@@ -123,7 +113,7 @@ func setEnv() {
 	http.DefaultClient.Timeout = time.Second * 30
 	httpClient.Transport = utlsx.NewUTLSHTTPRoundTripperWithProxy(
 		utls.HelloChrome_Auto, new(utls.Config),
-		http.DefaultTransport, nil, &headers,
+		http.DefaultTransport, nil, headers,
 	)
 }
 
@@ -242,15 +232,6 @@ func run() {
 	auth := model.AuthHandler{
 		ClientSecret: agentConfig.ClientSecret,
 		ClientUUID:   agentConfig.UUID,
-	}
-
-	// 下载远程命令执行需要的终端
-	if !agentConfig.DisableCommandExecute {
-		go func() {
-			if err := pty.DownloadDependency(); err != nil {
-				printf("pty 下载依赖失败: %v", err)
-			}
-		}()
 	}
 
 	// 定时检查更新
@@ -717,68 +698,11 @@ func checkHttpResp(taskUrl string, start time.Time, resp *http.Response, err err
 			c := resp.TLS.PeerCertificates[0]
 			result.Data = c.Issuer.CommonName + "|" + c.NotAfter.String()
 		}
-		altSvc := resp.Header.Get("Alt-Svc")
-		if altSvc != "" {
-			checkAltSvc(start, altSvc, taskUrl, result)
-		} else {
-			result.Successful = true
-		}
+		result.Successful = true
 	} else {
 		// HTTP 请求失败
 		result.Data = err.Error()
 	}
-}
-
-func checkAltSvc(start time.Time, altSvcStr string, taskUrl string, result *pb.TaskResult) {
-	altSvcList, err := altsvc.Parse(altSvcStr)
-	if err != nil {
-		result.Data = err.Error()
-		result.Successful = false
-		return
-	}
-
-	parsedUrl, _ := url.Parse(taskUrl)
-	originalHost := parsedUrl.Hostname()
-	originalPort := parsedUrl.Port()
-	if originalPort == "" {
-		switch parsedUrl.Scheme {
-		case "http":
-			originalPort = "80"
-		case "https":
-			originalPort = "443"
-		}
-	}
-
-	altAuthorityHost := ""
-	altAuthorityPort := ""
-	altAuthorityProtocol := ""
-	for _, altSvc := range altSvcList {
-		altAuthorityPort = altSvc.AltAuthority.Port
-		if altSvc.AltAuthority.Host != "" {
-			altAuthorityHost = altSvc.AltAuthority.Host
-			altAuthorityProtocol = altSvc.ProtocolID
-			break
-		}
-	}
-	if altAuthorityHost == "" {
-		altAuthorityHost = originalHost
-	}
-	if altAuthorityHost == originalHost && altAuthorityPort == originalPort {
-		result.Successful = true
-		return
-	}
-
-	altAuthorityUrl := "https://" + altAuthorityHost + ":" + altAuthorityPort + "/"
-	req, _ := http.NewRequest("GET", altAuthorityUrl, nil)
-	req.Host = originalHost
-
-	client := httpClient
-	if strings.HasPrefix(altAuthorityProtocol, "h3") {
-		client = httpClient3
-	}
-	resp, err := client.Do(req)
-
-	checkHttpResp(altAuthorityUrl, start, resp, err, result)
 }
 
 func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
@@ -838,7 +762,7 @@ func handleReportConfigTask(result *pb.TaskResult) {
 
 	println("Executing Report Config Task")
 
-	c, err := util.Json.Marshal(agentConfig)
+	c, err := json.Marshal(agentConfig)
 	if err != nil {
 		result.Data = err.Error()
 		return
@@ -860,7 +784,7 @@ func handleApplyConfigTask(task *pb.Task) {
 	println("Executing Apply Config Task")
 
 	var tmpConfig model.AgentConfig
-	if err := util.Json.Unmarshal([]byte(task.GetData()), &tmpConfig); err != nil {
+	if err := json.Unmarshal([]byte(task.GetData()), &tmpConfig); err != nil {
 		printf("Validate Config failed: %v", err)
 		reloadStatus.Store(false)
 		return
@@ -901,7 +825,7 @@ func handleTerminalTask(task *pb.Task) {
 		return
 	}
 	var terminal model.TerminalTask
-	err := util.Json.Unmarshal([]byte(task.GetData()), &terminal)
+	err := json.Unmarshal([]byte(task.GetData()), &terminal)
 	if err != nil {
 		printf("Terminal 任务解析错误: %v", err)
 		return
@@ -964,7 +888,7 @@ func handleTerminalTask(task *pb.Task) {
 		case 0:
 			tty.Write(remoteData.Data[1:])
 		case 1:
-			decoder := util.Json.NewDecoder(strings.NewReader(string(remoteData.Data[1:])))
+			decoder := json.NewDecoder(strings.NewReader(string(remoteData.Data[1:])))
 			var resizeMessage WindowSize
 			err := decoder.Decode(&resizeMessage)
 			if err != nil {
@@ -982,7 +906,7 @@ func handleNATTask(task *pb.Task) {
 	}
 
 	var nat model.TaskNAT
-	err := util.Json.Unmarshal([]byte(task.GetData()), &nat)
+	err := json.Unmarshal([]byte(task.GetData()), &nat)
 	if err != nil {
 		printf("NAT 任务解析错误: %v", err)
 		return
@@ -1048,7 +972,7 @@ func handleFMTask(task *pb.Task) {
 		return
 	}
 	var fmTask model.TaskFM
-	err := util.Json.Unmarshal([]byte(task.GetData()), &fmTask)
+	err := json.Unmarshal([]byte(task.GetData()), &fmTask)
 	if err != nil {
 		printf("FM 任务解析错误: %v", err)
 		return
@@ -1107,16 +1031,14 @@ func lookupIP(hostOrIp string) (string, error) {
 }
 
 func ioStreamKeepAlive(ctx context.Context, stream pb.NezhaService_IOStreamClient) {
-	// Can be replaced with time.Tick after upgrading to Go 1.23+
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	ticker := time.Tick(30 * time.Second)
 
 	for {
 		select {
 		case <-ctx.Done():
 			printf("IOStream KeepAlive stopped: %v", ctx.Err())
 			return
-		case <-ticker.C:
+		case <-ticker:
 			if err := stream.Send(&pb.IOStreamData{Data: []byte{}}); err != nil {
 				printf("IOStream KeepAlive failed: %v", err)
 				return
