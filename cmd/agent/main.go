@@ -26,7 +26,6 @@ import (
 	ping "github.com/prometheus-community/pro-bing"
 	utls "github.com/refraction-networking/utls"
 	"github.com/shirou/gopsutil/v4/host"
-	"github.com/tidwall/gjson"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -783,13 +782,26 @@ func handleApplyConfigTask(task *pb.Task) {
 
 	println("Executing Apply Config Task")
 
+	var tmpConfigRaw map[string]any
 	var tmpConfig model.AgentConfig
-	if err := json.Unmarshal([]byte(task.GetData()), &tmpConfig); err != nil {
-		printf("Validate Config failed: %v", err)
+	if err := json.Unmarshal([]byte(task.GetData()), &tmpConfigRaw); err != nil {
+		printf("Parsing Config failed: %v", err)
 		reloadStatus.Store(false)
 		return
 	}
-	obj := gjson.Parse(task.GetData())
+
+	decoder, err := tmpConfig.MapDecoder()
+	if err != nil {
+		printf("Getting Decoder for AgentConfig failed: %v", err)
+		reloadStatus.Store(false)
+		return
+	}
+
+	if err := decoder.Decode(tmpConfigRaw); err != nil {
+		printf("Parsing Config failed: %v", err)
+		reloadStatus.Store(false)
+		return
+	}
 
 	if err := model.ValidateConfig(&tmpConfig, true); err != nil {
 		printf("Validate Config failed: %v", err)
@@ -800,10 +812,9 @@ func handleApplyConfigTask(task *pb.Task) {
 	println("Will reload workers in 10 seconds")
 	time.AfterFunc(10*time.Second, func() {
 		println("Applying new configuration...")
-		obj.ForEach(func(k, _ gjson.Result) bool {
-			agentConfig.Apply(k.String(), &tmpConfig)
-			return true
-		})
+		for k := range tmpConfigRaw {
+			agentConfig.Apply(k, &tmpConfig)
+		}
 		agentConfig.Save()
 		geoipReported = false
 		logger.SetEnable(agentConfig.Debug)

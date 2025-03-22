@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/hashicorp/go-uuid"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
@@ -99,6 +100,17 @@ func (c *AgentConfig) Save() error {
 	}
 
 	return os.WriteFile(c.filePath, data, 0600)
+}
+
+func (c *AgentConfig) MapDecoder() (*mapstructure.Decoder, error) {
+	cfg := &mapstructure.DecoderConfig{
+		Metadata:         nil,
+		Result:           c,
+		WeaklyTypedInput: true,
+		TagName:          "json",
+	}
+
+	return mapstructure.NewDecoder(cfg)
 }
 
 func ValidateConfig(c *AgentConfig, isRemoteEdit bool) error {
