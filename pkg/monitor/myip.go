@@ -103,11 +103,11 @@ func fetchIP(servers []string, isV6 bool) string {
 	var err error
 
 	// 双栈支持参差不齐，不能随机请求，有些 IPv6 取不到 IP
-	for i := 0; i < len(servers); i++ {
+	for _, server := range servers {
 		if isV6 {
-			resp, err = httpGetWithUA(httpClientV6, servers[i])
+			resp, err = httpGetWithUA(httpClientV6, server)
 		} else {
-			resp, err = httpGetWithUA(httpClientV4, servers[i])
+			resp, err = httpGetWithUA(httpClientV4, server)
 		}
 		// 遇到单栈机器提前退出
 		if err != nil && strings.Contains(err.Error(), "no route to host") {

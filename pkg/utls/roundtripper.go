@@ -30,7 +30,7 @@ import (
 // returns a RoundTripper: its behaviour is documented at
 // https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake/-/merge_requests/76#note_2777161
 func NewUTLSHTTPRoundTripperWithProxy(clientHelloID utls.ClientHelloID, uTlsConfig *utls.Config,
-	backdropTransport http.RoundTripper, proxy *url.URL, header *http.Header) http.RoundTripper {
+	backdropTransport http.RoundTripper, proxy *url.URL, header http.Header) http.RoundTripper {
 	rtImpl := &uTLSHTTPRoundTripperImpl{
 		clientHelloID:     clientHelloID,
 		config:            uTlsConfig,
@@ -60,7 +60,7 @@ type uTLSHTTPRoundTripperImpl struct {
 
 	proxyAddr *url.URL
 
-	headers *http.Header
+	headers http.Header
 }
 
 type pendingConnKey struct {
@@ -75,7 +75,7 @@ var (
 )
 
 func (r *uTLSHTTPRoundTripperImpl) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header = *r.headers
+	req.Header = r.headers
 
 	if req.URL.Scheme != "https" {
 		return r.backdropTransport.RoundTrip(req)

@@ -19,7 +19,7 @@ func TestGenerateQueue(t *testing.T) {
 
 	gq := func(start, size int) []int {
 		result := make([]int, size)
-		for i := 0; i < size; i++ {
+		for i := range size {
 			result[i] = RotateQueue1(start, i, size)
 		}
 		return result

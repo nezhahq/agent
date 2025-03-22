@@ -70,10 +70,7 @@ func GetState(_ context.Context) ([]float64, error) {
 	if err != nil {
 		return nil, err
 	}
-	tot := sumArray(values)
-	if tot > 100 {
-		tot = 100
-	}
+	tot := min(100, sumArray(values))
 	return []float64{tot}, nil
 }
 
