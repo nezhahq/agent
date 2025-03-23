@@ -6,10 +6,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
@@ -146,4 +149,25 @@ func SubUintChecked[T Unsigned](a, b T) T {
 
 type Unsigned interface {
 	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+}
+
+func IsBelow10() bool {
+	hi, err := host.Info()
+	if err != nil {
+		return true
+	}
+
+	re := regexp.MustCompile(`Build (\d+(\.\d+)?)`)
+	match := re.FindStringSubmatch(hi.KernelVersion)
+	if len(match) > 1 {
+		versionStr := match[1]
+
+		version, err := strconv.ParseFloat(versionStr, 64)
+		if err != nil {
+			return true
+		}
+
+		return version < 17763
+	}
+	return true
 }

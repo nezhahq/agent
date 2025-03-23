@@ -13,6 +13,7 @@ import (
 	"github.com/knadh/koanf/v2"
 	"sigs.k8s.io/yaml"
 
+	"github.com/nezhahq/agent/pkg/logger"
 	"github.com/nezhahq/agent/pkg/util"
 )
 
@@ -76,10 +77,19 @@ func (c *AgentConfig) Read(path string) error {
 		return err
 	}
 
+	if !c.DisableAutoUpdate || !c.DisableForceUpdate {
+		if util.IsBelow10() {
+			c.DisableAutoUpdate = true
+			c.DisableForceUpdate = true
+			logger.Println("This version of Windows is no longer supported, disabling self-update now")
+			defer saveOnce()
+		}
+	}
+
 	if c.UUID == "" {
 		if uuid, err := uuid.GenerateUUID(); err == nil {
 			c.UUID = uuid
-			saveOnce()
+			defer saveOnce()
 		} else {
 			return fmt.Errorf("generate UUID failed: %v", err)
 		}

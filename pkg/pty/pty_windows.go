@@ -9,20 +9,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
-	"strconv"
 
 	"github.com/UserExistsError/conpty"
 	"github.com/artdarek/go-unzip"
 	"github.com/iamacarpet/go-winpty"
-	"github.com/shirou/gopsutil/v4/host"
+
+	"github.com/nezhahq/agent/pkg/util"
 )
 
 var _ IPty = (*winPTY)(nil)
 var _ IPty = (*conPty)(nil)
 
-var isWin10 = VersionCheck()
+var isWin10 = !util.IsBelow10()
 
 type winPTY struct {
 	tty *winpty.WinPTY
@@ -30,27 +29,6 @@ type winPTY struct {
 
 type conPty struct {
 	tty *conpty.ConPty
-}
-
-func VersionCheck() bool {
-	hi, err := host.Info()
-	if err != nil {
-		return false
-	}
-
-	re := regexp.MustCompile(`Build (\d+(\.\d+)?)`)
-	match := re.FindStringSubmatch(hi.KernelVersion)
-	if len(match) > 1 {
-		versionStr := match[1]
-
-		version, err := strconv.ParseFloat(versionStr, 64)
-		if err != nil {
-			return false
-		}
-
-		return version >= 17763
-	}
-	return false
 }
 
 func DownloadDependency() error {
