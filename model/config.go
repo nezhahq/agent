@@ -79,7 +79,7 @@ func (c *AgentConfig) Read(path string) error {
 	if c.UUID == "" {
 		if uuid, err := uuid.GenerateUUID(); err == nil {
 			c.UUID = uuid
-			saveOnce()
+			defer saveOnce()
 		} else {
 			return fmt.Errorf("generate UUID failed: %v", err)
 		}
