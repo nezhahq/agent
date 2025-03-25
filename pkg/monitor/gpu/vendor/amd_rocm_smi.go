@@ -79,10 +79,9 @@ func parseModel(jsonObject []byte) ([]string, error) {
 	}
 
 	ret := make([]string, 0)
-	result.ForEach(func(_, value gjson.Result) bool {
+	for _, value := range result.ForEach {
 		ret = append(ret, value.Get("Card series").String())
-		return true
-	})
+	}
 
 	return ret, nil
 }
@@ -98,10 +97,9 @@ func parseUsage(jsonObject []byte) ([]float64, error) {
 	}
 
 	ret := make([]float64, 0)
-	result.ForEach(func(_, value gjson.Result) bool {
+	for _, value := range result.ForEach {
 		ret = append(ret, value.Get("GPU use (%)").Float())
-		return true
-	})
+	}
 
 	return ret, nil
 }
