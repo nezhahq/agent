@@ -3,12 +3,12 @@ package temperature
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
+	"strings"
 
 	"github.com/shirou/gopsutil/v4/sensors"
 
 	"github.com/nezhahq/agent/model"
-	"github.com/nezhahq/agent/pkg/util"
 )
 
 var sensorIgnoreList = []string{
@@ -26,7 +26,7 @@ func GetState(_ context.Context) ([]model.SensorTemperature, error) {
 
 	var tempStat []model.SensorTemperature
 	for _, t := range temperatures {
-		if t.Temperature > 0 && !util.ContainsStr(sensorIgnoreList, t.SensorKey) {
+		if t.Temperature > 0 && !slices.Contains(sensorIgnoreList, t.SensorKey) {
 			tempStat = append(tempStat, model.SensorTemperature{
 				Name:        t.SensorKey,
 				Temperature: t.Temperature,
@@ -34,8 +34,8 @@ func GetState(_ context.Context) ([]model.SensorTemperature, error) {
 		}
 	}
 
-	sort.Slice(tempStat, func(i, j int) bool {
-		return tempStat[i].Name < tempStat[j].Name
+	slices.SortFunc(tempStat, func(a, b model.SensorTemperature) int {
+		return strings.Compare(a.Name, b.Name)
 	})
 
 	return tempStat, nil

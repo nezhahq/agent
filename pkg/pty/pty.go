@@ -26,8 +26,8 @@ func DownloadDependency() error {
 
 func Start() (IPty, error) {
 	var shellPath string
-	for i := 0; i < len(defaultShells); i++ {
-		shellPath, _ = exec.LookPath(defaultShells[i])
+	for _, sh := range defaultShells {
+		shellPath, _ = exec.LookPath(sh)
 		if shellPath != "" {
 			break
 		}
