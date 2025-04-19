@@ -15,10 +15,13 @@ import (
 
 var (
 	cfList = []string{
-		"https://blog.cloudflare.com/cdn-cgi/trace",
-		"https://developers.cloudflare.com/cdn-cgi/trace",
-		"https://hostinger.com/cdn-cgi/trace",
-		"https://ahrefs.com/cdn-cgi/trace",
+		"https://pt.cloudflare.com/cdn-cgi/trace"，
+		"https://sv.cloudflare.com/cdn-cgi/trace",
+		"https://ru.cloudflare.com/cdn-cgi/trace",
+		"https://hu.cloudflare.com/cdn-cgi/trace",
+		
+		"https://ns.cloudflare.com/cdn-cgi/trace",
+		"https://dns.cloudflare.com/cdn-cgi/trace",
 	}
 	CustomEndpoints               []string
 	GeoQueryIP, CachedCountryCode string
