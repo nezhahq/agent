@@ -19,9 +19,7 @@ var (
 		"https://sv.cloudflare.com/cdn-cgi/trace",
 		"https://ru.cloudflare.com/cdn-cgi/trace",
 		"https://hu.cloudflare.com/cdn-cgi/trace",
-		
 		"https://ns.cloudflare.com/cdn-cgi/trace",
-		"https://dns.cloudflare.com/cdn-cgi/trace",
 	}
 	CustomEndpoints               []string
 	GeoQueryIP, CachedCountryCode string
