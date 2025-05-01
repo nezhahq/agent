@@ -17,7 +17,7 @@ type DiskKeyType string
 const DiskKey DiskKeyType = "disk"
 
 var expectDiskFsTypes = []string{
-	"apfs", "ext4", "ext3", "ext2", "f2fs", "reiserfs", "jfs", "btrfs",
+	"apfs", "ext4", "ext3", "ext2", "f2fs", "reiserfs", "jfs", "bcachefs", "btrfs",
 	"fuseblk", "zfs", "simfs", "ntfs", "fat32", "exfat", "xfs", "fuse.rclone",
 }
 
