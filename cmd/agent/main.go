@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"math/rand"
 	"net"
 	"net/http"
@@ -812,9 +813,7 @@ func handleApplyConfigTask(task *pb.Task) {
 	println("Will reload workers in 10 seconds")
 	time.AfterFunc(10*time.Second, func() {
 		println("Applying new configuration...")
-		for k := range tmpConfigRaw {
-			agentConfig.Apply(k, &tmpConfig)
-		}
+		agentConfig.Apply(maps.Keys(tmpConfigRaw), &tmpConfig)
 		agentConfig.Save()
 		geoipReported = false
 		logger.SetEnable(agentConfig.Debug)
