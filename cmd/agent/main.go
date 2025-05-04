@@ -676,10 +676,6 @@ func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 	taskUrl := task.GetData()
 	resp, err := httpClient.Get(taskUrl)
 	printf("HTTP-GET Task: %s", taskUrl)
-	checkHttpResp(taskUrl, start, resp, err, result)
-}
-
-func checkHttpResp(taskUrl string, start time.Time, resp *http.Response, err error, result *pb.TaskResult) {
 	if err == nil {
 		defer resp.Body.Close()
 		_, err = io.Copy(io.Discard, resp.Body)
