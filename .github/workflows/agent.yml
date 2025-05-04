@@ -55,11 +55,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23.7"
-
-      - name: Generate
-        run: |
-          go generate ./...
+          go-version: "1.24.2"
 
       - name: Build Test
         if: github.event_name != 'push' || !contains(github.ref, 'refs/tags/')
