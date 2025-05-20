@@ -366,7 +366,7 @@ func runService(action string, path string) {
 	}
 	prg.Service = s
 
-	serviceLogger, err := s.Logger(nil)
+	serviceLogger, err := logger.NewNezhaServiceLogger(s, nil)
 	if err != nil {
 		printf("获取 service logger 时出错: %+v", err)
 		logger.InitDefaultLogger(agentConfig.Debug, service.ConsoleLogger)
