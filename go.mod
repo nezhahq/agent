@@ -9,22 +9,22 @@ require (
 	github.com/cloudflare/ahocorasick v0.0.0-20240916140611-054963ec9396
 	github.com/creack/pty v1.1.24
 	github.com/dean2021/goss v0.0.0-20230129073947-df90431348f1
-	github.com/ebitengine/purego v0.8.2
+	github.com/ebitengine/purego v0.8.4
 	github.com/hashicorp/go-uuid v1.0.3
-	github.com/jaypipes/ghw v0.16.0
+	github.com/jaypipes/ghw v0.17.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.0
 	github.com/knadh/koanf/v2 v2.2.0
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20241205090552-0b56e412e750
 	github.com/nezhahq/service v0.0.0-20250122132143-5f38afb105e9
 	github.com/prometheus-community/pro-bing v0.7.0
-	github.com/refraction-networking/utls v1.7.1
-	github.com/shirou/gopsutil/v4 v4.25.4
+	github.com/refraction-networking/utls v1.7.3
+	github.com/shirou/gopsutil/v4 v4.25.5
 	github.com/tidwall/gjson v1.18.0
 	github.com/urfave/cli/v2 v2.27.6
-	golang.org/x/net v0.39.0
-	golang.org/x/sys v0.32.0
-	google.golang.org/grpc v1.72.0
+	golang.org/x/net v0.40.0
+	golang.org/x/sys v0.33.0
+	google.golang.org/grpc v1.72.2
 	google.golang.org/protobuf v1.36.6
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -70,12 +70,12 @@ require (
 	github.com/ulikunitz/xz v0.5.11 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/crypto v0.37.0 // indirect
+	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/oauth2 v0.26.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/term v0.31.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250428153025-10db94c68c34 // indirect
+	golang.org/x/sync v0.14.0 // indirect
+	golang.org/x/term v0.32.0 // indirect
+	golang.org/x/text v0.25.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250528174236-200df99c418a // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
 )
