@@ -577,7 +577,7 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 	if _, err = os.Stat(statFile); err == nil {
 		printf("found self-update stat file, waiting for another process to finish update...")
 		if fErr := fsnotifyx.ExitOnDeleteFile(printf, statFile); fErr != nil {
-			printf("failed to monitoring path of stat file: %v", fErr)
+			printf("failed to monitor path of stat file: %v", fErr)
 			return
 		}
 		exit = true
@@ -589,7 +589,7 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 		}
 	}
 	var stat *os.File
-	stat, err = os.OpenFile(statFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	stat, err = os.OpenFile(statFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		printf("failed to create self-update stat file: %v", err)
 		return

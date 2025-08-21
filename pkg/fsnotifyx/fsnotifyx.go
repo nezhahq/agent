@@ -1,7 +1,10 @@
 package fsnotifyx
 
 import (
+	"context"
+	"errors"
 	"path/filepath"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -18,29 +21,35 @@ func ExitOnDeleteFile(logFunc func(format string, v ...interface{}), filePath st
 		return err
 	}
 
-	exitChan := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
 		for {
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok {
+					cancel()
 					return
 				}
 				if event.Name == filePath && event.Has(fsnotify.Remove) {
 					logFunc("fsnotifyx: file %s removed, exiting...", filePath)
-					select {
-					case <-exitChan:
-					default:
-						close(exitChan)
-					}
+					cancel()
 					return
 				}
-			case err := <-watcher.Errors:
-				logFunc("fsnotifyx: %v", err)
+			case werr := <-watcher.Errors:
+				logFunc("fsnotifyx: %v", werr)
 			}
 		}
 	}()
 
-	<-exitChan
-	return nil
+	timeout := time.NewTimer(time.Minute * 5)
+	for {
+		select {
+		case <-timeout.C:
+			return errors.New("fsnotifyx: timeout")
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }
