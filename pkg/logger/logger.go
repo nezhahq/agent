@@ -26,6 +26,10 @@ func InitDefaultLogger(enabled bool, logger service.Logger) {
 	})
 }
 
+func DefaultLogger() *ServiceLogger {
+	return defaultLogger
+}
+
 func SetEnable(enable bool) {
 	defaultLogger.SetEnable(enable)
 }
