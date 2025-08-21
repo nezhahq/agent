@@ -9,6 +9,8 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+const defaultTimeout = time.Minute * 5
+
 func ExitOnDeleteFile(logFunc func(format string, v ...interface{}), filePath string) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -43,7 +45,7 @@ func ExitOnDeleteFile(logFunc func(format string, v ...interface{}), filePath st
 		}
 	}()
 
-	timeout := time.NewTimer(time.Minute * 5)
+	timeout := time.NewTimer(defaultTimeout)
 	for {
 		select {
 		case <-timeout.C:
