@@ -82,8 +82,8 @@ const (
 	delayWhenError = time.Second * 10 // Agent 重连间隔
 	networkTimeOut = time.Second * 5  // 普通网络超时
 
-	minUpdateInterval = 30
-	maxUpdateInterval = 90
+	minUpdateInterval = 1440
+	maxUpdateInterval = 2880
 
 	binaryName = "nezha-agent"
 )
