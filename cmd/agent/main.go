@@ -568,6 +568,11 @@ func reportGeoIP(use6, forceUpdate bool) bool {
 func doSelfUpdate(useLocalVersion bool) (exit bool) {
 	v := semver.MustParse("0.1.0")
 	if useLocalVersion {
+		vr, err := semver.Parse(version)
+		if err != nil {
+			printf("failed to parse current version string: %v", err)
+			return
+		}
 		cmd := exec.Command(executablePath, "-v")
 		vb, err := cmd.Output()
 		if err != nil {
@@ -578,7 +583,12 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 		vstr := vraw[len(vraw)-1]
 		v, err = semver.Parse(vstr)
 		if err != nil {
-			printf("failed to parse current executable version: %v", err)
+			printf("failed to parse executable version string: %v", err)
+			return
+		}
+		if !vr.Equals(v) {
+			printf("executable version differs from current version, exiting to re-check update...")
+			exit = true
 			return
 		}
 	}
