@@ -571,7 +571,11 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 	}
 	execHash := util.MD5Sum(executablePath)[:7]
 	statName := fmt.Sprintf("agent-%s.stat", execHash)
-	tmpDir := os.TempDir()
+	tmpDir := filepath.Join(os.TempDir(), binaryName)
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		printf("failed to create temp dir: %v", err)
+		return
+	}
 	statFile := filepath.Join(tmpDir, statName)
 	var err error
 	if _, err = os.Stat(statFile); err == nil {
