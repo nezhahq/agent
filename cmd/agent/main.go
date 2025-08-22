@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -567,8 +568,21 @@ func reportGeoIP(use6, forceUpdate bool) bool {
 func doSelfUpdate(useLocalVersion bool) (exit bool) {
 	v := semver.MustParse("0.1.0")
 	if useLocalVersion {
-		v = semver.MustParse(version)
+		cmd := exec.Command(executablePath, "-v")
+		vb, err := cmd.Output()
+		if err != nil {
+			printf("failed to retrieve current executable version: %v", err)
+			return
+		}
+		vraw := strings.Split(strings.TrimSpace(string(vb)), " ")
+		vstr := vraw[len(vraw)-1]
+		v, err = semver.Parse(vstr)
+		if err != nil {
+			printf("failed to parse current executable version: %v", err)
+			return
+		}
 	}
+
 	execHash := util.MD5Sum(executablePath)[:7]
 	statName := fmt.Sprintf("agent-%s.stat", execHash)
 	tmpDir := filepath.Join(os.TempDir(), binaryName)
@@ -576,11 +590,14 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 		printf("failed to create temp dir: %v", err)
 		return
 	}
+
 	statFile := filepath.Join(tmpDir, statName)
-	var err error
-	if _, err = os.Stat(statFile); err == nil {
+	if _, err := os.Stat(statFile); err == nil {
 		printf("found self-update stat file, waiting for another process to finish update...")
-		if fErr := fsnotifyx.ExitOnDeleteFile(printf, statFile); fErr != nil {
+		if fErr := fsnotifyx.ExitOnDeleteFile(context.Background(), printf, statFile); fErr != nil {
+			if errors.Is(fErr, fsnotifyx.ErrTimeout) {
+				os.Remove(statFile) // try to remove stat file
+			}
 			printf("failed to monitor path of stat file: %v", fErr)
 			return
 		}
@@ -592,18 +609,20 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 			return
 		}
 	}
-	var stat *os.File
-	stat, err = os.OpenFile(statFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+
+	stat, err := os.OpenFile(statFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		printf("failed to create self-update stat file: %v", err)
 		return
 	}
+
 	defer func() {
 		stat.Close()
 		if err := os.Remove(statFile); err != nil {
 			printf("remove stat failed: %v", err)
 		}
 	}()
+
 	printf("检查更新: %v", v)
 	var latest *selfupdate.Release
 	if monitor.CachedCountryCode != "cn" && !agentConfig.UseGiteeToUpgrade {
@@ -625,10 +644,12 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 		}
 		latest, err = updater.UpdateSelf(v, "naibahq/agent")
 	}
+
 	if err != nil {
 		printf("更新失败: %v", err)
 		return
 	}
+
 	if !latest.Version.Equals(v) {
 		printf("已经更新至: %v, 正在结束进程", latest.Version)
 		exit = true

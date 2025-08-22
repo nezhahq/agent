@@ -9,9 +9,11 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-const defaultTimeout = time.Minute * 5
+const defaultTimeout = time.Minute * 3
 
-func ExitOnDeleteFile(logFunc func(format string, v ...interface{}), filePath string) error {
+var ErrTimeout = errors.New("fsnotifyx: timeout")
+
+func ExitOnDeleteFile(ctx context.Context, logFunc func(format string, v ...interface{}), filePath string) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
@@ -23,7 +25,7 @@ func ExitOnDeleteFile(logFunc func(format string, v ...interface{}), filePath st
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	go func() {
@@ -49,7 +51,7 @@ func ExitOnDeleteFile(logFunc func(format string, v ...interface{}), filePath st
 	for {
 		select {
 		case <-timeout.C:
-			return errors.New("fsnotifyx: timeout")
+			return ErrTimeout
 		case <-ctx.Done():
 			return nil
 		}
