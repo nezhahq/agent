@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -14,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -35,6 +35,7 @@ import (
 	"github.com/nezhahq/agent/cmd/agent/commands"
 	"github.com/nezhahq/agent/model"
 	fm "github.com/nezhahq/agent/pkg/fm"
+	"github.com/nezhahq/agent/pkg/fsnotifyx"
 	"github.com/nezhahq/agent/pkg/logger"
 	"github.com/nezhahq/agent/pkg/monitor"
 	"github.com/nezhahq/agent/pkg/processgroup"
@@ -81,8 +82,8 @@ const (
 	delayWhenError = time.Second * 10 // Agent 重连间隔
 	networkTimeOut = time.Second * 5  // 普通网络超时
 
-	minUpdateInterval = 30
-	maxUpdateInterval = 90
+	minUpdateInterval = 1440
+	maxUpdateInterval = 2880
 
 	binaryName = "nezha-agent"
 )
@@ -235,7 +236,9 @@ func run() {
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentConfig.DisableAutoUpdate {
-		doSelfUpdate(true)
+		if doExit := doSelfUpdate(true); doExit {
+			os.Exit(1)
+		}
 		go func() {
 			var interval time.Duration
 			if agentConfig.SelfUpdatePeriod > 0 {
@@ -244,7 +247,9 @@ func run() {
 				interval = time.Duration(rand.Intn(maxUpdateInterval-minUpdateInterval)+minUpdateInterval) * time.Minute
 			}
 			for range time.Tick(interval) {
-				doSelfUpdate(true)
+				if doExit := doSelfUpdate(true); doExit {
+					os.Exit(1)
+				}
 			}
 		}()
 	}
@@ -341,7 +346,7 @@ func runService(action string, path string) {
 	args := []string{"-c", path}
 	name := filepath.Base(executablePath)
 	if path != defaultConfigPath && path != "" {
-		hex := fmt.Sprintf("%x", md5.Sum([]byte(path)))[:7]
+		hex := util.MD5Sum(path)[:7]
 		name = fmt.Sprintf("%s-%s", name, hex)
 	}
 
@@ -560,15 +565,76 @@ func reportGeoIP(use6, forceUpdate bool) bool {
 }
 
 // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
-func doSelfUpdate(useLocalVersion bool) {
+func doSelfUpdate(useLocalVersion bool) (exit bool) {
 	v := semver.MustParse("0.1.0")
 	if useLocalVersion {
-		v = semver.MustParse(version)
+		vr, err := semver.Parse(version)
+		if err != nil {
+			printf("failed to parse current version string: %v", err)
+			return
+		}
+		cmd := exec.Command(executablePath, "-v")
+		vb, err := cmd.Output()
+		if err != nil {
+			printf("failed to retrieve current executable version: %v", err)
+			return
+		}
+		vraw := strings.Split(strings.TrimSpace(string(vb)), " ")
+		vstr := vraw[len(vraw)-1]
+		v, err = semver.Parse(vstr)
+		if err != nil {
+			printf("failed to parse executable version string: %v", err)
+			return
+		}
+		if !vr.Equals(v) {
+			printf("executable version differs from current version, exiting to re-check update...")
+			exit = true
+			return
+		}
 	}
-	agentProcs := util.FindProcessByCmd(executablePath)
+
+	execHash := util.MD5Sum(executablePath)[:7]
+	statName := fmt.Sprintf("agent-%s.stat", execHash)
+	tmpDir := filepath.Join(os.TempDir(), binaryName)
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		printf("failed to create temp dir: %v", err)
+		return
+	}
+
+	statFile := filepath.Join(tmpDir, statName)
+	if _, err := os.Stat(statFile); err == nil {
+		printf("found self-update stat file, waiting for another process to finish update...")
+		if fErr := fsnotifyx.ExitOnDeleteFile(context.Background(), printf, statFile); fErr != nil {
+			if errors.Is(fErr, fsnotifyx.ErrTimeout) {
+				os.Remove(statFile) // try to remove stat file
+			}
+			printf("failed to monitor path of stat file: %v", fErr)
+			return
+		}
+		exit = true
+		return
+	} else {
+		if !errors.Is(err, os.ErrNotExist) {
+			printf("failed to retrieve self-update stat at %s", statFile)
+			return
+		}
+	}
+
+	stat, err := os.OpenFile(statFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		printf("failed to create self-update stat file: %v", err)
+		return
+	}
+
+	defer func() {
+		stat.Close()
+		if err := os.Remove(statFile); err != nil {
+			printf("remove stat failed: %v", err)
+		}
+	}()
+
 	printf("检查更新: %v", v)
 	var latest *selfupdate.Release
-	var err error
 	if monitor.CachedCountryCode != "cn" && !agentConfig.UseGiteeToUpgrade {
 		updater, erru := selfupdate.NewUpdater(selfupdate.Config{
 			BinaryName: binaryName,
@@ -588,15 +654,17 @@ func doSelfUpdate(useLocalVersion bool) {
 		}
 		latest, err = updater.UpdateSelf(v, "naibahq/agent")
 	}
+
 	if err != nil {
 		printf("更新失败: %v", err)
 		return
 	}
+
 	if !latest.Version.Equals(v) {
 		printf("已经更新至: %v, 正在结束进程", latest.Version)
-		util.KillProcesses(agentProcs)
-		os.Exit(1)
+		exit = true
 	}
+	return
 }
 
 func handleUpgradeTask(*pb.Task, *pb.TaskResult) {

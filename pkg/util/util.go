@@ -3,7 +3,8 @@ package util
 import (
 	"cmp"
 	"context"
-	"errors"
+	"crypto/md5"
+	"fmt"
 	"iter"
 	"net"
 	"net/http"
@@ -11,8 +12,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/shirou/gopsutil/v4/process"
 )
 
 const MacOSChromeUA = "nezha-agent/1.0"
@@ -81,44 +80,16 @@ func LookupIP(host string) ([]net.IP, error) {
 	return ips, nil
 }
 
-func FindProcessByCmd(cmd string) []*process.Process {
-	procs, err := process.Processes()
-	if err != nil {
-		return nil
-	}
-
-	var agentProcs []*process.Process
-	for _, proc := range procs {
-		pcmd, _ := proc.Exe()
-		if pcmd == cmd && proc.Pid != int32(os.Getpid()) {
-			agentProcs = append(agentProcs, proc)
-		}
-	}
-
-	return agentProcs
-}
-
-func KillProcesses(procs []*process.Process) error {
-	var perr error
-
-	for _, proc := range procs {
-		if children, err := proc.Children(); err == nil {
-			for _, child := range children {
-				perr = errors.Join(perr, killChildProcess(child))
-			}
-		}
-		perr = errors.Join(perr, proc.Kill())
-	}
-
-	return perr
-}
-
 func SubUintChecked[T Unsigned](a, b T) T {
 	if a < b {
 		return 0
 	}
 
 	return a - b
+}
+
+func MD5Sum(str string) string {
+	return fmt.Sprintf("%x", md5.Sum([]byte(str)))
 }
 
 type Unsigned interface {
