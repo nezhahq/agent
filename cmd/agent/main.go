@@ -236,7 +236,7 @@ func run() {
 
 	// 定时检查更新
 	if _, err := semver.Parse(version); err == nil && !agentConfig.DisableAutoUpdate {
-		if doExit := doSelfUpdate(true); doExit {
+		if doSelfUpdate(true) {
 			os.Exit(1)
 		}
 		go func() {
@@ -247,7 +247,7 @@ func run() {
 				interval = time.Duration(rand.Intn(maxUpdateInterval-minUpdateInterval)+minUpdateInterval) * time.Minute
 			}
 			for range time.Tick(interval) {
-				if doExit := doSelfUpdate(true); doExit {
+				if doSelfUpdate(true) {
 					os.Exit(1)
 				}
 			}
@@ -671,7 +671,9 @@ func handleUpgradeTask(*pb.Task, *pb.TaskResult) {
 	if agentConfig.DisableForceUpdate {
 		return
 	}
-	doSelfUpdate(false)
+	if doSelfUpdate(false) {
+		os.Exit(1)
+	}
 }
 
 func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
