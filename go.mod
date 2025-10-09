@@ -1,6 +1,6 @@
 module github.com/nezhahq/agent
 
-go 1.24.2
+go 1.24.7
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
