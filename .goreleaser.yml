@@ -22,6 +22,7 @@ builds:
       - mipsle
       - s390x
       - riscv64
+      - loong64
     gomips:
       - softfloat
     ignore:
