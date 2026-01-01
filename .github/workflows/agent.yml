@@ -39,6 +39,8 @@ jobs:
           - goos: linux
             goarch: mipsle
             gomips: softfloat
+          - goos: linux
+            goarch: loong64
           - goos: freebsd
             goarch: arm
         exclude:
