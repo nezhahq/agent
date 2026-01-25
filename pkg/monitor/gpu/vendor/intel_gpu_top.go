@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -17,13 +18,57 @@ const (
 	intelVendorID = "0x8086"
 )
 
+// Cache for Intel GPU detection and model info (these don't change at runtime)
+var (
+	intelGPUDetected     bool
+	intelGPUDetectedOnce sync.Once
+	intelGPUModels       []string
+	intelGPUModelsOnce   sync.Once
+	intelGPUTopPath      string
+	intelGPUTopPathOnce  sync.Once
+)
+
 type IntelGPUTop struct {
 	BinPath string
 	data    []byte
 }
 
+// IsAvailable performs a lightweight check for Intel GPU presence without spawning processes.
+// This is used for vendor detection and is much faster than calling Start().
+func (igt *IntelGPUTop) IsAvailable() bool {
+	intelGPUDetectedOnce.Do(func() {
+		intelGPUDetected = igt.hasIntelGPU() && igt.hasIntelGPUTopTool()
+	})
+	return intelGPUDetected
+}
+
+// hasIntelGPUTopTool checks if intel_gpu_top binary is available
+func (igt *IntelGPUTop) hasIntelGPUTopTool() bool {
+	intelGPUTopPathOnce.Do(func() {
+		if _, err := os.Stat(igt.BinPath); err == nil {
+			intelGPUTopPath = igt.BinPath
+			return
+		}
+		if path, err := exec.LookPath("intel_gpu_top"); err == nil {
+			intelGPUTopPath = path
+		}
+	})
+	return intelGPUTopPath != ""
+}
+
 func (igt *IntelGPUTop) GatherModel() ([]string, error) {
-	return igt.gatherModel()
+	// Cache model info since it doesn't change at runtime
+	var modelErr error
+	intelGPUModelsOnce.Do(func() {
+		intelGPUModels, modelErr = igt.gatherModel()
+	})
+	if modelErr != nil {
+		return nil, modelErr
+	}
+	if len(intelGPUModels) == 0 {
+		return nil, errors.New("no Intel GPU model found")
+	}
+	return intelGPUModels, nil
 }
 
 func (igt *IntelGPUTop) GatherUsage() ([]float64, error) {
@@ -31,18 +76,14 @@ func (igt *IntelGPUTop) GatherUsage() ([]float64, error) {
 }
 
 func (igt *IntelGPUTop) Start() error {
-	// First check if Intel GPU exists by checking vendor IDs
-	if !igt.hasIntelGPU() {
-		return errors.New("no Intel GPU detected")
+	// Use cached detection result
+	if !igt.IsAvailable() {
+		return errors.New("Intel GPU or intel_gpu_top not available")
 	}
 
-	// Check if intel_gpu_top binary exists
-	if _, err := os.Stat(igt.BinPath); os.IsNotExist(err) {
-		binPath, err := exec.LookPath("intel_gpu_top")
-		if err != nil {
-			return errors.New("didn't find intel_gpu_top tool to query Intel GPU utilization")
-		}
-		igt.BinPath = binPath
+	// Use cached binary path
+	if intelGPUTopPath != "" {
+		igt.BinPath = intelGPUTopPath
 	}
 
 	igt.data = igt.pollIntelGPUTop()

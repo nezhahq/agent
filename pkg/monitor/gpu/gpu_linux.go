@@ -4,7 +4,6 @@ package gpu
 
 import (
 	"context"
-	"errors"
 
 	"github.com/nezhahq/agent/pkg/monitor/gpu/vendor"
 )
@@ -19,25 +18,26 @@ var vendorType = getVendor()
 
 func getVendor() uint8 {
 	// Check NVIDIA first (most common discrete GPU)
-	_, err := getNvidiaStat()
-	if err == nil {
+	// Use Start() which is lightweight for NVIDIA (just checks binary exists)
+	smi := &vendor.NvidiaSMI{BinPath: "/usr/bin/nvidia-smi"}
+	if smi.Start() == nil {
 		return vendorNVIDIA
 	}
 
 	// Check AMD second
-	_, err = getAMDStat()
-	if err == nil {
+	rsmi := &vendor.ROCmSMI{BinPath: "/opt/rocm/bin/rocm-smi"}
+	if rsmi.Start() == nil {
 		return vendorAMD
 	}
 
-	// Check Intel iGPU last
-	_, err = getIntelStat()
-	if err == nil {
+	// Check Intel iGPU last - use lightweight detection (no process spawning)
+	igt := &vendor.IntelGPUTop{BinPath: "/usr/bin/intel_gpu_top"}
+	if igt.IsAvailable() {
 		return vendorIntel
 	}
 
-	// Default fallback - try AMD (original behavior)
-	return vendorAMD
+	// Default fallback - no GPU detected
+	return 0
 }
 
 func getNvidiaStat() ([]float64, error) {
@@ -142,7 +142,7 @@ func GetHost(_ context.Context) ([]string, error) {
 	case vendorIntel:
 		gi, err = getIntelHost()
 	default:
-		return nil, errors.New("invalid vendor")
+		return nil, nil // No GPU detected
 	}
 
 	if err != nil {
@@ -164,7 +164,7 @@ func GetState(_ context.Context) ([]float64, error) {
 	case vendorIntel:
 		gs, err = getIntelStat()
 	default:
-		return nil, errors.New("invalid vendor")
+		return nil, nil // No GPU detected
 	}
 
 	if err != nil {
