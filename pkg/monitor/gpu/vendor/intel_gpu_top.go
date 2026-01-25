@@ -2,20 +2,19 @@ package vendor
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/tidwall/gjson"
 )
 
 const (
-	intelVendorID = "0x8086"
+	intelVendorID         = "0x8086"
+	intelGPUStatsInterval = "1000" // in milliseconds
 )
 
 // Cache for Intel GPU detection and model info (these don't change at runtime)
@@ -30,7 +29,7 @@ var (
 
 type IntelGPUTop struct {
 	BinPath string
-	data    []byte
+	usage   float64
 }
 
 // IsAvailable performs a lightweight check for Intel GPU presence without spawning processes.
@@ -72,7 +71,10 @@ func (igt *IntelGPUTop) GatherModel() ([]string, error) {
 }
 
 func (igt *IntelGPUTop) GatherUsage() ([]float64, error) {
-	return igt.gatherUsage()
+	if igt.usage < 0 {
+		return nil, errors.New("no data collected from intel_gpu_top")
+	}
+	return []float64{igt.usage}, nil
 }
 
 func (igt *IntelGPUTop) Start() error {
@@ -86,7 +88,11 @@ func (igt *IntelGPUTop) Start() error {
 		igt.BinPath = intelGPUTopPath
 	}
 
-	igt.data = igt.pollIntelGPUTop()
+	usage, err := igt.collectStats()
+	if err != nil {
+		return err
+	}
+	igt.usage = usage
 	return nil
 }
 
@@ -149,29 +155,154 @@ func (igt *IntelGPUTop) checkLspciForIntelGPU() bool {
 	return false
 }
 
-func (igt *IntelGPUTop) pollIntelGPUTop() []byte {
-	// Run intel_gpu_top with JSON output for ~500ms sampling period
-	// -J: JSON output
-	// -o -: output to stdout
-	// -s 500: 500ms sampling period
-	cmd := exec.Command(igt.BinPath, "-J", "-o", "-", "-s", "500")
+// collectStats executes intel_gpu_top in text mode (-l) and parses the output
+// This avoids JSON corruption issues that can occur with -J mode
+func (igt *IntelGPUTop) collectStats() (float64, error) {
+	// Use -l for list/text mode instead of -J (JSON) to avoid corrupted JSON issues
+	args := []string{"-s", intelGPUStatsInterval, "-l"}
+	cmd := exec.Command(igt.BinPath, args...)
 
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
+	// Avoid blocking if intel_gpu_top writes to stderr
+	cmd.Stderr = io.Discard
 
-	if err := cmd.Start(); err != nil {
-		return nil
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return 0, err
 	}
 
-	// Wait for enough time to get at least one complete sample
-	// The first sample is typically incomplete, we need the second one
-	time.Sleep(600 * time.Millisecond)
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
 
-	// Kill the process since intel_gpu_top runs continuously
-	_ = cmd.Process.Kill()
-	_ = cmd.Wait()
+	// Ensure we always reap the child to avoid zombies
+	defer func() {
+		_ = stdout.Close()
+		if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	}()
 
-	return stdout.Bytes()
+	scanner := bufio.NewScanner(stdout)
+	var header1 string
+	var engineNames []string
+	var preEngineCols int
+	var hadDataRow bool
+	var skippedFirstDataRow bool
+	var maxUsage float64
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		// First header line starts with "Freq"
+		if strings.HasPrefix(line, "Freq") {
+			header1 = line
+			continue
+		}
+
+		// Second header line starts with "req"
+		if strings.HasPrefix(line, "req") {
+			engineNames, preEngineCols = parseIntelHeaders(header1, line)
+			continue
+		}
+
+		// Skip first data row as it sometimes has erroneous data
+		if !skippedFirstDataRow {
+			skippedFirstDataRow = true
+			continue
+		}
+
+		// Data row - parse and get usage
+		usage, err := parseIntelDataRow(line, engineNames, preEngineCols)
+		if err != nil {
+			continue
+		}
+
+		if usage > maxUsage {
+			maxUsage = usage
+		}
+		hadDataRow = true
+
+		// We only need one valid data row
+		break
+	}
+
+	if scanErr := scanner.Err(); scanErr != nil {
+		return 0, scanErr
+	}
+
+	if !hadDataRow {
+		return 0, errors.New("no valid data from intel_gpu_top")
+	}
+
+	return maxUsage, nil
+}
+
+// parseIntelHeaders parses the header lines to determine column positions
+// Header format example:
+// Freq MHz  IRQ RC6   Power     RCS/0   BCS/0   VCS/0   VCS/1  VECS/0
+// req  act       %     gpu       %       %       %       %       %
+func parseIntelHeaders(header1, header2 string) (engineNames []string, preEngineCols int) {
+	h1 := strings.Fields(header1)
+	h2 := strings.Fields(header2)
+
+	// Collect engine names from header1
+	for _, col := range h1 {
+		// Strip trailing numbers and slashes (e.g., "RCS/0" -> "RCS")
+		key := strings.TrimRightFunc(col, func(r rune) bool {
+			return (r >= '0' && r <= '9') || r == '/'
+		})
+
+		switch key {
+		case "RCS", "BCS", "VCS", "VECS", "CCS":
+			engineNames = append(engineNames, key)
+		}
+	}
+
+	// Calculate pre-engine columns count
+	// Each engine has 3 columns in data rows (busy%, sema%, wait%)
+	if n := len(engineNames); n > 0 {
+		preEngineCols = maxInt(len(h2)-3*n, 0)
+	}
+
+	return engineNames, preEngineCols
+}
+
+// parseIntelDataRow parses a data row and returns the maximum engine usage
+// Data format example:
+// 300  100     0 95.29   0.00    0.00   0.00    0.00   0.00    0.00   5.32   0.00    0.00
+func parseIntelDataRow(line string, engineNames []string, preEngineCols int) (float64, error) {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return 0, errors.New("empty data row")
+	}
+
+	// Make sure row has enough columns for engines
+	// Each engine has 3 columns: busy%, sema%, wait%
+	need := preEngineCols + 3*len(engineNames)
+	if len(fields) < need {
+		return 0, errors.New("insufficient columns in data row")
+	}
+
+	var maxBusy float64
+
+	// Parse engine busy percentages
+	for k := range engineNames {
+		// busy% is at position: preEngineCols + 3*k
+		base := preEngineCols + 3*k
+		if base < len(fields) {
+			if v, err := strconv.ParseFloat(fields[base], 64); err == nil {
+				if v > maxBusy {
+					maxBusy = v
+				}
+			}
+		}
+	}
+
+	return maxBusy, nil
 }
 
 func (igt *IntelGPUTop) gatherModel() ([]string, error) {
@@ -189,7 +320,6 @@ func (igt *IntelGPUTop) gatherModel() ([]string, error) {
 		if (strings.Contains(lower, "vga") || strings.Contains(lower, "display")) &&
 			strings.Contains(line, "[8086:") {
 			// Extract the model name
-			// Format: "13:00.0 VGA compatible controller [0300]: Intel Corporation TigerLake GT2 [Iris Xe Graphics] [8086:9a49] (rev 01)"
 			model := extractIntelModelName(line)
 			if model != "" {
 				models = append(models, model)
@@ -206,7 +336,7 @@ func (igt *IntelGPUTop) gatherModel() ([]string, error) {
 
 // extractIntelModelName extracts the GPU model name from lspci output
 func extractIntelModelName(line string) string {
-	// Look for the pattern after "Intel Corporation" or similar
+	// Look for the pattern after "Intel Corporation"
 	// Example: "Intel Corporation TigerLake GT2 [Iris Xe Graphics]"
 	re := regexp.MustCompile(`Intel Corporation\s+(.+?)\s+\[8086:`)
 	matches := re.FindStringSubmatch(line)
@@ -224,122 +354,9 @@ func extractIntelModelName(line string) string {
 	return "Intel GPU"
 }
 
-func (igt *IntelGPUTop) gatherUsage() ([]float64, error) {
-	if igt.data == nil {
-		return nil, errors.New("no data collected from intel_gpu_top")
+func maxInt(a, b int) int {
+	if a > b {
+		return a
 	}
-
-	usage, err := parseIntelUsage(igt.data)
-	if err != nil {
-		return nil, err
-	}
-
-	return usage, nil
-}
-
-// parseIntelUsage parses the JSON output from intel_gpu_top and extracts GPU usage
-func parseIntelUsage(jsonData []byte) ([]float64, error) {
-	if len(jsonData) == 0 {
-		return nil, errors.New("empty data from intel_gpu_top")
-	}
-
-	// intel_gpu_top outputs a stream of JSON objects separated by },{ or newlines
-	// We need to find and parse individual JSON objects
-	// Look for complete JSON objects by finding matching braces
-
-	objects := extractJSONObjects(jsonData)
-	if len(objects) == 0 {
-		return nil, errors.New("no valid JSON objects found in intel_gpu_top output")
-	}
-
-	// Use the last complete object (most recent sample)
-	// Skip the first object as it may be incomplete initialization data
-	var lastValidObject []byte
-	for i := len(objects) - 1; i >= 0; i-- {
-		obj := objects[i]
-		result := gjson.ParseBytes(obj)
-		if result.Get("engines").Exists() {
-			lastValidObject = obj
-			break
-		}
-	}
-
-	if lastValidObject == nil {
-		return nil, errors.New("no valid engine data found in intel_gpu_top output")
-	}
-
-	result := gjson.ParseBytes(lastValidObject)
-	engines := result.Get("engines")
-	if !engines.Exists() {
-		return nil, errors.New("no engines data in intel_gpu_top output")
-	}
-
-	// Calculate overall GPU usage by taking the maximum busy percentage across all engines
-	// This is similar to how other tools report "GPU utilization"
-	var maxBusy float64
-	var totalBusy float64
-	var engineCount int
-
-	engines.ForEach(func(key, value gjson.Result) bool {
-		busy := value.Get("busy").Float()
-		if busy > maxBusy {
-			maxBusy = busy
-		}
-		totalBusy += busy
-		engineCount++
-		return true
-	})
-
-	// For Intel iGPU, we report the max busy value as the primary usage metric
-	// This provides a better indication of GPU load than averaging
-	// (e.g., when video encoding is at 80% but 3D is at 0%, report ~80%)
-	if maxBusy == 0 && engineCount > 0 {
-		// If all engines report 0, return 0
-		return []float64{0}, nil
-	}
-
-	return []float64{maxBusy}, nil
-}
-
-// extractJSONObjects extracts individual JSON objects from a stream of JSON data
-func extractJSONObjects(data []byte) [][]byte {
-	var objects [][]byte
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-
-	var currentObject bytes.Buffer
-	braceCount := 0
-	inObject := false
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		for _, char := range line {
-			if char == '{' {
-				if !inObject {
-					inObject = true
-					currentObject.Reset()
-				}
-				braceCount++
-				currentObject.WriteRune(char)
-			} else if char == '}' {
-				braceCount--
-				currentObject.WriteRune(char)
-				if braceCount == 0 && inObject {
-					// Complete object found
-					obj := make([]byte, currentObject.Len())
-					copy(obj, currentObject.Bytes())
-					objects = append(objects, obj)
-					inObject = false
-					currentObject.Reset()
-				}
-			} else if inObject {
-				currentObject.WriteRune(char)
-			}
-		}
-		if inObject {
-			currentObject.WriteRune('\n')
-		}
-	}
-
-	return objects
+	return b
 }
