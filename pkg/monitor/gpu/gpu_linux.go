@@ -12,17 +12,32 @@ import (
 const (
 	vendorAMD = iota + 1
 	vendorNVIDIA
+	vendorIntel
 )
 
 var vendorType = getVendor()
 
 func getVendor() uint8 {
+	// Check NVIDIA first (most common discrete GPU)
 	_, err := getNvidiaStat()
-	if err != nil {
-		return vendorAMD
-	} else {
+	if err == nil {
 		return vendorNVIDIA
 	}
+
+	// Check AMD second
+	_, err = getAMDStat()
+	if err == nil {
+		return vendorAMD
+	}
+
+	// Check Intel iGPU last
+	_, err = getIntelStat()
+	if err == nil {
+		return vendorIntel
+	}
+
+	// Default fallback - try AMD (original behavior)
+	return vendorAMD
 }
 
 func getNvidiaStat() ([]float64, error) {
@@ -49,6 +64,21 @@ func getAMDStat() ([]float64, error) {
 		return nil, err
 	}
 	data, err := rsmi.GatherUsage()
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func getIntelStat() ([]float64, error) {
+	igt := &vendor.IntelGPUTop{
+		BinPath: "/usr/bin/intel_gpu_top",
+	}
+	err := igt.Start()
+	if err != nil {
+		return nil, err
+	}
+	data, err := igt.GatherUsage()
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +115,21 @@ func getAMDHost() ([]string, error) {
 	return data, nil
 }
 
+func getIntelHost() ([]string, error) {
+	igt := &vendor.IntelGPUTop{
+		BinPath: "/usr/bin/intel_gpu_top",
+	}
+	err := igt.Start()
+	if err != nil {
+		return nil, err
+	}
+	data, err := igt.GatherModel()
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 func GetHost(_ context.Context) ([]string, error) {
 	var gi []string
 	var err error
@@ -94,6 +139,8 @@ func GetHost(_ context.Context) ([]string, error) {
 		gi, err = getAMDHost()
 	case vendorNVIDIA:
 		gi, err = getNvidiaHost()
+	case vendorIntel:
+		gi, err = getIntelHost()
 	default:
 		return nil, errors.New("invalid vendor")
 	}
@@ -114,6 +161,8 @@ func GetState(_ context.Context) ([]float64, error) {
 		gs, err = getAMDStat()
 	case vendorNVIDIA:
 		gs, err = getNvidiaStat()
+	case vendorIntel:
+		gs, err = getIntelStat()
 	default:
 		return nil, errors.New("invalid vendor")
 	}
