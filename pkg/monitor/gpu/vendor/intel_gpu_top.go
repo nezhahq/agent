@@ -6,11 +6,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/jaypipes/ghw"
 )
 
 const (
@@ -37,7 +36,9 @@ type IntelGPUTop struct {
 // This is used for vendor detection and is much faster than calling Start().
 func (igt *IntelGPUTop) IsAvailable() bool {
 	intelGPUDetectedOnce.Do(func() {
-		intelGPUDetected = igt.hasIntelGPU() && igt.hasIntelGPUTopTool()
+		igt.hasIntelGPUTopTool()
+		// If tool exists, we assume Intel GPU is present and supported
+		intelGPUDetected = intelGPUTopPath != ""
 	})
 	return intelGPUDetected
 }
@@ -97,64 +98,13 @@ func (igt *IntelGPUTop) Start() error {
 	return nil
 }
 
-// hasIntelGPU checks if an Intel GPU is present in the system
-func (igt *IntelGPUTop) hasIntelGPU() bool {
-	// Check for Intel vendor ID in DRM devices
-	entries, err := os.ReadDir("/sys/class/drm")
-	if err != nil {
-		return false
-	}
-
-	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), "card") {
-			continue
-		}
-		// Skip render nodes like "card0-DP-1"
-		if strings.Contains(entry.Name(), "-") {
-			continue
-		}
-
-		vendorPath := "/sys/class/drm/" + entry.Name() + "/device/vendor"
-		data, err := os.ReadFile(vendorPath)
-		if err != nil {
-			continue
-		}
-
-		vendor := strings.TrimSpace(string(data))
-		if vendor == intelVendorID {
-			return true
-		}
-	}
-
-	// Also check for render devices
-	if _, err := os.Stat("/dev/dri/renderD128"); err == nil {
-		// renderD128 exists, might be Intel GPU - check with lspci
-		return igt.checkLspciForIntelGPU()
-	}
-
-	return false
-}
-
-// checkLspciForIntelGPU uses lspci to detect Intel GPU
-func (igt *IntelGPUTop) checkLspciForIntelGPU() bool {
-	cmd := exec.Command("lspci", "-nn")
-	output, err := cmd.Output()
-	if err != nil {
-		return false
-	}
-
-	// Look for Intel VGA or Display controllers
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		lower := strings.ToLower(line)
-		if (strings.Contains(lower, "vga") || strings.Contains(lower, "display")) &&
-			strings.Contains(line, "[8086:") {
-			return true
-		}
-	}
-
-	return false
-}
+// hasIntelGPU is deprecated in favor of just checking for the tool,
+// but the struct method requirement might still be there.
+// We merged the logic into IsAvailable. This function is kept private if needed or removed.
+// Since IsAvailable calls igt.hasIntelGPU() in the previous version, let's just make sure IsAvailable is self-contained or calls this validly.
+// Re-implementing a dummy or simple version if needed, or better, just rely on hasIntelGPUTopTool.
+// But wait, IsAvailable previously did: intelGPUDetected = igt.hasIntelGPU() && igt.hasIntelGPUTopTool()
+// Now we simplify to just tool check.
 
 // collectStats executes intel_gpu_top in text mode (-l) and parses the output
 // This avoids JSON corruption issues that can occur with -J mode
@@ -307,21 +257,52 @@ func parseIntelDataRow(line string, engineNames []string, preEngineCols int) (fl
 }
 
 func (igt *IntelGPUTop) gatherModel() ([]string, error) {
-	gpu, err := ghw.GPU(ghw.WithDisableWarnings())
+	// Use lspci to get Intel GPU model name as ghw is removed
+	cmd := exec.Command("lspci", "-nn")
+	output, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		// Fallback if lspci is not available
+		return []string{"Intel GPU"}, nil
 	}
 
 	var models []string
-	for _, card := range gpu.GraphicsCards {
-		if card.DeviceInfo != nil && strings.EqualFold(card.DeviceInfo.Vendor.ID, "8086") {
-			models = append(models, card.DeviceInfo.Product.Name)
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		lower := strings.ToLower(line)
+		if (strings.Contains(lower, "vga") || strings.Contains(lower, "display")) &&
+			strings.Contains(line, "[8086:") {
+			// Extract the model name
+			model := extractIntelModelName(line)
+			if model != "" {
+				models = append(models, model)
+			}
 		}
 	}
 
 	if len(models) == 0 {
-		return nil, errors.New("no Intel GPU model found")
+		// Fallback if no specific model found but tool exists
+		return []string{"Intel GPU"}, nil
 	}
 
 	return models, nil
+}
+
+// extractIntelModelName extracts the GPU model name from lspci output
+func extractIntelModelName(line string) string {
+	// Look for the pattern after "Intel Corporation"
+	// Example: "Intel Corporation TigerLake GT2 [Iris Xe Graphics]"
+	re := regexp.MustCompile(`Intel Corporation\s+(.+?)\s+\[8086:`)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) > 1 {
+		return "Intel " + strings.TrimSpace(matches[1])
+	}
+
+	// Fallback: try to get anything between the controller type and [8086:
+	re = regexp.MustCompile(`:\s+(.+?)\s+\[8086:`)
+	matches = re.FindStringSubmatch(line)
+	if len(matches) > 1 {
+		return strings.TrimSpace(matches[1])
+	}
+
+	return "Intel GPU"
 }
