@@ -10,6 +10,12 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+)
+
+var (
+	nvidiaSmiPath string
+	nvidiaSmiOnce sync.Once
 )
 
 type NvidiaSMI struct {
@@ -26,13 +32,21 @@ func (smi *NvidiaSMI) GatherUsage() ([]float64, error) {
 }
 
 func (smi *NvidiaSMI) Start() error {
-	if _, err := os.Stat(smi.BinPath); os.IsNotExist(err) {
-		binPath, err := exec.LookPath("nvidia-smi")
-		if err != nil {
-			return errors.New("didn't find the adequate tool to query GPU utilization")
+	nvidiaSmiOnce.Do(func() {
+		if _, err := os.Stat(smi.BinPath); err == nil {
+			nvidiaSmiPath = smi.BinPath
+		} else {
+			if binPath, err := exec.LookPath("nvidia-smi"); err == nil {
+				nvidiaSmiPath = binPath
+			}
 		}
-		smi.BinPath = binPath
+	})
+
+	if nvidiaSmiPath == "" {
+		return errors.New("didn't find the adequate tool to query GPU utilization")
 	}
+
+	smi.BinPath = nvidiaSmiPath
 	smi.data = smi.pollNvidiaSMI()
 	return nil
 }
