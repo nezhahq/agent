@@ -6,10 +6,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/jaypipes/ghw"
 )
 
 const (
@@ -249,52 +250,21 @@ func parseIntelDataRow(line string, engineNames []string, preEngineCols int) (fl
 }
 
 func (igt *IntelGPUTop) gatherModel() ([]string, error) {
-	// Use lspci to get Intel GPU model name as ghw is removed
-	cmd := exec.Command("lspci", "-nn")
-	output, err := cmd.Output()
+	gpu, err := ghw.GPU(ghw.WithDisableWarnings())
 	if err != nil {
-		// Fallback if lspci is not available
-		return []string{"Intel GPU"}, nil
+		return nil, err
 	}
 
 	var models []string
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		lower := strings.ToLower(line)
-		if (strings.Contains(lower, "vga") || strings.Contains(lower, "display")) &&
-			strings.Contains(line, "[8086:") {
-			// Extract the model name
-			model := extractIntelModelName(line)
-			if model != "" {
-				models = append(models, model)
-			}
+	for _, card := range gpu.GraphicsCards {
+		if card.DeviceInfo != nil && strings.EqualFold(card.DeviceInfo.Vendor.ID, "8086") {
+			models = append(models, card.DeviceInfo.Product.Name)
 		}
 	}
 
 	if len(models) == 0 {
-		// Fallback if no specific model found but tool exists
-		return []string{"Intel GPU"}, nil
+		return nil, errors.New("no Intel GPU model found")
 	}
 
 	return models, nil
-}
-
-// extractIntelModelName extracts the GPU model name from lspci output
-func extractIntelModelName(line string) string {
-	// Look for the pattern after "Intel Corporation"
-	// Example: "Intel Corporation TigerLake GT2 [Iris Xe Graphics]"
-	re := regexp.MustCompile(`Intel Corporation\s+(.+?)\s+\[8086:`)
-	matches := re.FindStringSubmatch(line)
-	if len(matches) > 1 {
-		return "Intel " + strings.TrimSpace(matches[1])
-	}
-
-	// Fallback: try to get anything between the controller type and [8086:
-	re = regexp.MustCompile(`:\s+(.+?)\s+\[8086:`)
-	matches = re.FindStringSubmatch(line)
-	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
-	}
-
-	return "Intel GPU"
 }
