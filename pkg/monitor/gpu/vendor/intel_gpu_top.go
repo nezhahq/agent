@@ -6,10 +6,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/jaypipes/ghw"
 )
 
 const (
@@ -265,7 +266,7 @@ func parseIntelHeaders(header1, header2 string) (engineNames []string, preEngine
 	// Calculate pre-engine columns count
 	// Each engine has 3 columns in data rows (busy%, sema%, wait%)
 	if n := len(engineNames); n > 0 {
-		preEngineCols = maxInt(len(h2)-3*n, 0)
+		preEngineCols = max(len(h2)-3*n, 0)
 	}
 
 	return engineNames, preEngineCols
@@ -306,24 +307,15 @@ func parseIntelDataRow(line string, engineNames []string, preEngineCols int) (fl
 }
 
 func (igt *IntelGPUTop) gatherModel() ([]string, error) {
-	// Use lspci to get Intel GPU model name
-	cmd := exec.Command("lspci", "-nn")
-	output, err := cmd.Output()
+	gpu, err := ghw.GPU(ghw.WithDisableWarnings())
 	if err != nil {
-		return nil, errors.New("failed to run lspci")
+		return nil, err
 	}
 
 	var models []string
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		lower := strings.ToLower(line)
-		if (strings.Contains(lower, "vga") || strings.Contains(lower, "display")) &&
-			strings.Contains(line, "[8086:") {
-			// Extract the model name
-			model := extractIntelModelName(line)
-			if model != "" {
-				models = append(models, model)
-			}
+	for _, card := range gpu.GraphicsCards {
+		if card.DeviceInfo != nil && strings.EqualFold(card.DeviceInfo.Vendor.ID, "8086") {
+			models = append(models, card.DeviceInfo.Product.Name)
 		}
 	}
 
@@ -332,31 +324,4 @@ func (igt *IntelGPUTop) gatherModel() ([]string, error) {
 	}
 
 	return models, nil
-}
-
-// extractIntelModelName extracts the GPU model name from lspci output
-func extractIntelModelName(line string) string {
-	// Look for the pattern after "Intel Corporation"
-	// Example: "Intel Corporation TigerLake GT2 [Iris Xe Graphics]"
-	re := regexp.MustCompile(`Intel Corporation\s+(.+?)\s+\[8086:`)
-	matches := re.FindStringSubmatch(line)
-	if len(matches) > 1 {
-		return "Intel " + strings.TrimSpace(matches[1])
-	}
-
-	// Fallback: try to get anything between the controller type and [8086:
-	re = regexp.MustCompile(`:\s+(.+?)\s+\[8086:`)
-	matches = re.FindStringSubmatch(line)
-	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
-	}
-
-	return "Intel GPU"
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
