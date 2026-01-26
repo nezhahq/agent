@@ -32,7 +32,7 @@ type IntelGPUTop struct {
 	usage   float64
 }
 
-// IsAvailable performs a lightweight check for Intel GPU presence without spawning processes.
+// IsAvailable checks if the intel_gpu_top tool is present and usable.
 // This is used for vendor detection and is much faster than calling Start().
 func (igt *IntelGPUTop) IsAvailable() bool {
 	intelGPUDetectedOnce.Do(func() {
@@ -97,14 +97,6 @@ func (igt *IntelGPUTop) Start() error {
 	igt.usage = usage
 	return nil
 }
-
-// hasIntelGPU is deprecated in favor of just checking for the tool,
-// but the struct method requirement might still be there.
-// We merged the logic into IsAvailable. This function is kept private if needed or removed.
-// Since IsAvailable calls igt.hasIntelGPU() in the previous version, let's just make sure IsAvailable is self-contained or calls this validly.
-// Re-implementing a dummy or simple version if needed, or better, just rely on hasIntelGPUTopTool.
-// But wait, IsAvailable previously did: intelGPUDetected = igt.hasIntelGPU() && igt.hasIntelGPUTopTool()
-// Now we simplify to just tool check.
 
 // collectStats executes intel_gpu_top in text mode (-l) and parses the output
 // This avoids JSON corruption issues that can occur with -J mode
