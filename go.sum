@@ -94,8 +94,8 @@ github.com/mitchellh/copystructure v1.2.0 h1:vpKXTN4ewci03Vljg/q9QvCGUDttBOGBIa1
 github.com/mitchellh/copystructure v1.2.0/go.mod h1:qLl+cE2AmVv+CoeAwDPye/v+N2HKCj9FbZEVFJRxO9s=
 github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zxSIeXaQ=
 github.com/mitchellh/reflectwalk v1.0.2/go.mod h1:mSTlrgnPZtwu0c4WaC2kGObEpuNDbx0jmZXqmk4esnw=
-github.com/nezhahq/go-github-selfupdate v0.0.0-20241205090552-0b56e412e750 h1:T0APK/dSR1CgIYYIQmobxYh+gRfEUuD8ZCiflGL+8lI=
-github.com/nezhahq/go-github-selfupdate v0.0.0-20241205090552-0b56e412e750/go.mod h1:NVxyW3iSQ7YII8vvCIBTzk4HzsAa08Iibb68e0i0Nww=
+github.com/nezhahq/go-github-selfupdate v0.0.0-20260216052712-d6b71f5180c1 h1:r0oEX8AI1xeZVH6imK7efT2HGEoMiOzydhyG8fYPrqM=
+github.com/nezhahq/go-github-selfupdate v0.0.0-20260216052712-d6b71f5180c1/go.mod h1:NVxyW3iSQ7YII8vvCIBTzk4HzsAa08Iibb68e0i0Nww=
 github.com/nezhahq/service v0.0.0-20250122132143-5f38afb105e9 h1:BXowwSdGVKOpSKiNBQA9Ax2mBcf9B31Zbbz99PBqRhM=
 github.com/nezhahq/service v0.0.0-20250122132143-5f38afb105e9/go.mod h1:uOZzv+KTXyvRkfWd2Cj9QE/OK/J/fEVphGwUWBzgcx8=
 github.com/nezhahq/xsyslog v1.0.1 h1:xWpx8ZHtoRuUYo7Cs0EZ/kvA6O/y3Ebj5VPdX49xlZw=
