@@ -635,16 +635,8 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 
 	printf("检查更新: %v", v)
 	var latest *selfupdate.Release
-	if monitor.CachedCountryCode != "cn" && !agentConfig.UseGiteeToUpgrade {
-		updater, erru := selfupdate.NewUpdater(selfupdate.Config{
-			BinaryName: binaryName,
-		})
-		if erru != nil {
-			printf("更新失败: %v", erru)
-			return
-		}
-		latest, err = updater.UpdateSelf(v, "nezhahq/agent")
-	} else {
+	switch {
+	case agentConfig.UseGiteeToUpgrade:
 		updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
 			BinaryName: binaryName,
 		})
@@ -653,6 +645,44 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 			return
 		}
 		latest, err = updater.UpdateSelf(v, "naibahq/agent")
+	case agentConfig.UseAtomGitToUpgrade:
+		updater, erru := selfupdate.NewAtomGitUpdater(selfupdate.Config{
+			BinaryName: binaryName,
+		})
+		if erru != nil {
+			printf("更新失败: %v", erru)
+			return
+		}
+		latest, err = updater.UpdateSelf(v, "naiba/nezha-agent")
+	case monitor.CachedCountryCode == "cn":
+		if rand.Intn(2) == 0 {
+			updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
+				BinaryName: binaryName,
+			})
+			if erru != nil {
+				printf("更新失败: %v", erru)
+				return
+			}
+			latest, err = updater.UpdateSelf(v, "naibahq/agent")
+		} else {
+			updater, erru := selfupdate.NewAtomGitUpdater(selfupdate.Config{
+				BinaryName: binaryName,
+			})
+			if erru != nil {
+				printf("更新失败: %v", erru)
+				return
+			}
+			latest, err = updater.UpdateSelf(v, "naiba/nezha-agent")
+		}
+	default:
+		updater, erru := selfupdate.NewUpdater(selfupdate.Config{
+			BinaryName: binaryName,
+		})
+		if erru != nil {
+			printf("更新失败: %v", erru)
+			return
+		}
+		latest, err = updater.UpdateSelf(v, "nezhahq/agent")
 	}
 
 	if err != nil {
