@@ -894,7 +894,7 @@ func handleApplyConfigTask(task *pb.Task) {
 	println("Will reload workers in 10 seconds")
 	time.AfterFunc(10*time.Second, func() {
 		println("Applying new configuration...")
-		agentConfig := tmpConfig
+		agentConfig = tmpConfig
 		agentConfig.Save()
 		geoipReported = false
 		logger.SetEnable(agentConfig.Debug)
