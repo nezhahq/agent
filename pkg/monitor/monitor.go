@@ -2,7 +2,10 @@ package monitor
 
 import (
 	"context"
+	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,6 +68,40 @@ var (
 	stateLock        sync.Mutex
 )
 
+func readCgroupV2Memory() (used uint64, total uint64, ok bool) {
+	currentBytes, err := os.ReadFile("/sys/fs/cgroup/memory.current")
+	if err != nil {
+		return 0, 0, false
+	}
+
+	maxBytes, err := os.ReadFile("/sys/fs/cgroup/memory.max")
+	if err != nil {
+		return 0, 0, false
+	}
+
+	currentStr := strings.TrimSpace(string(currentBytes))
+	maxStr := strings.TrimSpace(string(maxBytes))
+	if currentStr == "" || maxStr == "" || maxStr == "max" {
+		return 0, 0, false
+	}
+
+	used, err = strconv.ParseUint(currentStr, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+
+	total, err = strconv.ParseUint(maxStr, 10, 64)
+	if err != nil || total == 0 {
+		return 0, 0, false
+	}
+
+	if used > total {
+		used = total
+	}
+
+	return used, total, true
+}
+
 func InitConfig(cfg *model.AgentConfig) {
 	agentConfig = cfg
 }
@@ -109,6 +146,9 @@ func GetHost() *model.Host {
 		if runtime.GOOS != "windows" {
 			ret.SwapTotal = mv.SwapTotal
 		}
+		if _, cgTotal, ok := readCgroupV2Memory(); ok {
+			ret.MemTotal = cgTotal
+		}
 	}
 
 	if runtime.GOOS == "windows" {
@@ -137,9 +177,17 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 	if err != nil {
 		printf("mem.VirtualMemory error: %v", err)
 	} else {
-		ret.MemUsed = vm.Total - vm.Available
+		if vm.Available > vm.Total {
+			if cgUsed, _, ok := readCgroupV2Memory(); ok {
+				ret.MemUsed = cgUsed
+			} else {
+				ret.MemUsed = util.SubUintChecked(vm.Total, vm.Available)
+			}
+		} else {
+			ret.MemUsed = util.SubUintChecked(vm.Total, vm.Available)
+		}
 		if runtime.GOOS != "windows" {
-			ret.SwapUsed = vm.SwapTotal - vm.SwapFree
+			ret.SwapUsed = util.SubUintChecked(vm.SwapTotal, vm.SwapFree)
 		}
 	}
 	if runtime.GOOS == "windows" {
