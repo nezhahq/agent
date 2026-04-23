@@ -37,18 +37,17 @@ func GetHost(ctx context.Context) (uint64, error) {
 
 	// Fallback 到这个方法,仅统计根路径,适用于OpenVZ之类的.
 	if runtime.GOOS == "linux" && total == 0 {
-		cmd := exec.Command("df")
+		cmd := exec.Command("df", "-P", "-k", "/")
 		out, err := cmd.CombinedOutput()
 		if err == nil {
 			s := strings.Split(string(out), "\n")
 			for _, c := range s {
 				info := strings.Fields(c)
-				if len(info) == 6 {
-					if info[5] == "/" {
-						total, _ = strconv.ParseUint(info[1], 0, 64)
-						// 默认获取的是1K块为单位的.
-						total = total * 1024
-					}
+				if len(info) == 6 && info[5] == "/" {
+					total, _ = strconv.ParseUint(info[1], 10, 64)
+					// 默认获取的是1K块为单位的.
+					total = total * 1024
+					break
 				}
 			}
 		}
@@ -73,18 +72,17 @@ func GetState(ctx context.Context) (uint64, error) {
 
 	// Fallback 到这个方法,仅统计根路径,适用于OpenVZ之类的.
 	if runtime.GOOS == "linux" && used == 0 {
-		cmd := exec.Command("df")
+		cmd := exec.Command("df", "-P", "-k", "/")
 		out, err := cmd.CombinedOutput()
 		if err == nil {
 			s := strings.Split(string(out), "\n")
 			for _, c := range s {
 				info := strings.Fields(c)
-				if len(info) == 6 {
-					if info[5] == "/" {
-						used, _ = strconv.ParseUint(info[2], 0, 64)
-						// 默认获取的是1K块为单位的.
-						used = used * 1024
-					}
+				if len(info) == 6 && info[5] == "/" {
+					used, _ = strconv.ParseUint(info[2], 10, 64)
+					// 默认获取的是1K块为单位的.
+					used = used * 1024
+					break
 				}
 			}
 		}
