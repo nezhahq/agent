@@ -21,6 +21,30 @@ var expectDiskFsTypes = []string{
 	"fuseblk", "zfs", "simfs", "ntfs", "fat32", "exfat", "xfs", "fuse.rclone",
 }
 
+func getLinuxRootDFFallback(ctx context.Context, fieldIndex int) (uint64, bool) {
+	if runtime.GOOS != "linux" {
+		return 0, false
+	}
+
+	out, err := exec.CommandContext(ctx, "df", "-P", "-k", "/").CombinedOutput()
+	if err != nil {
+		return 0, false
+	}
+
+	for _, c := range strings.Split(string(out), "\n") {
+		info := strings.Fields(c)
+		if len(info) == 6 && info[5] == "/" {
+			v, err := strconv.ParseUint(info[fieldIndex], 10, 64)
+			if err == nil {
+				// 默认获取的是1K块为单位的.
+				return v * 1024, true
+			}
+		}
+	}
+
+	return 0, false
+}
+
 func GetHost(ctx context.Context) (uint64, error) {
 	devices, err := getDevices(ctx)
 	if err != nil {
@@ -36,21 +60,9 @@ func GetHost(ctx context.Context) (uint64, error) {
 	}
 
 	// Fallback 到这个方法,仅统计根路径,适用于OpenVZ之类的.
-	if runtime.GOOS == "linux" && total == 0 {
-		out, err := exec.CommandContext(ctx, "df", "-P", "-k", "/").CombinedOutput()
-		if err == nil {
-			s := strings.Split(string(out), "\n")
-			for _, c := range s {
-				info := strings.Fields(c)
-				if len(info) == 6 && info[5] == "/" {
-					v, err := strconv.ParseUint(info[1], 10, 64)
-					if err == nil {
-						// 默认获取的是1K块为单位的.
-						total = v * 1024
-						break
-					}
-				}
-			}
+	if total == 0 {
+		if v, ok := getLinuxRootDFFallback(ctx, 1); ok {
+			total = v
 		}
 	}
 
@@ -72,21 +84,9 @@ func GetState(ctx context.Context) (uint64, error) {
 	}
 
 	// Fallback 到这个方法,仅统计根路径,适用于OpenVZ之类的.
-	if runtime.GOOS == "linux" && used == 0 {
-		out, err := exec.CommandContext(ctx, "df", "-P", "-k", "/").CombinedOutput()
-		if err == nil {
-			s := strings.Split(string(out), "\n")
-			for _, c := range s {
-				info := strings.Fields(c)
-				if len(info) == 6 && info[5] == "/" {
-					v, err := strconv.ParseUint(info[2], 10, 64)
-					if err == nil {
-						// 默认获取的是1K块为单位的.
-						used = v * 1024
-						break
-					}
-				}
-			}
+	if used == 0 {
+		if v, ok := getLinuxRootDFFallback(ctx, 2); ok {
+			used = v
 		}
 	}
 
