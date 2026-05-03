@@ -2,6 +2,7 @@ package disk
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -16,9 +17,39 @@ type DiskKeyType string
 
 const DiskKey DiskKeyType = "disk"
 
+const (
+	df1KBlockIndex = iota + 1
+	dfUsedIndex
+)
+
 var expectDiskFsTypes = []string{
 	"apfs", "ext4", "ext3", "ext2", "f2fs", "reiserfs", "jfs", "bcachefs", "btrfs",
 	"fuseblk", "zfs", "simfs", "ntfs", "fat32", "exfat", "xfs", "fuse.rclone",
+}
+
+func getLinuxRootDFFallback(ctx context.Context, fieldIndex int) (uint64, error) {
+	if runtime.GOOS != "linux" {
+		return 0, errors.New("linux df fallback is only supported on linux")
+	}
+
+	out, err := exec.CommandContext(ctx, "df", "-P", "-k", "/").CombinedOutput()
+	if err != nil {
+		return 0, err
+	}
+
+	for _, c := range strings.Split(string(out), "\n") {
+		info := strings.Fields(c)
+		if len(info) == 6 && info[5] == "/" {
+			v, err := strconv.ParseUint(info[fieldIndex], 10, 64)
+			if err != nil {
+				return 0, err
+			}
+			// 默认获取的是1K块为单位的.
+			return v * 1024, nil
+		}
+	}
+
+	return 0, errors.New(`root path "/" not found in df output`)
 }
 
 func GetHost(ctx context.Context) (uint64, error) {
@@ -36,21 +67,9 @@ func GetHost(ctx context.Context) (uint64, error) {
 	}
 
 	// Fallback 到这个方法,仅统计根路径,适用于OpenVZ之类的.
-	if runtime.GOOS == "linux" && total == 0 {
-		cmd := exec.Command("df")
-		out, err := cmd.CombinedOutput()
-		if err == nil {
-			s := strings.Split(string(out), "\n")
-			for _, c := range s {
-				info := strings.Fields(c)
-				if len(info) == 6 {
-					if info[5] == "/" {
-						total, _ = strconv.ParseUint(info[1], 0, 64)
-						// 默认获取的是1K块为单位的.
-						total = total * 1024
-					}
-				}
-			}
+	if total == 0 {
+		if v, err := getLinuxRootDFFallback(ctx, df1KBlockIndex); err == nil {
+			total = v
 		}
 	}
 
@@ -72,21 +91,9 @@ func GetState(ctx context.Context) (uint64, error) {
 	}
 
 	// Fallback 到这个方法,仅统计根路径,适用于OpenVZ之类的.
-	if runtime.GOOS == "linux" && used == 0 {
-		cmd := exec.Command("df")
-		out, err := cmd.CombinedOutput()
-		if err == nil {
-			s := strings.Split(string(out), "\n")
-			for _, c := range s {
-				info := strings.Fields(c)
-				if len(info) == 6 {
-					if info[5] == "/" {
-						used, _ = strconv.ParseUint(info[2], 0, 64)
-						// 默认获取的是1K块为单位的.
-						used = used * 1024
-					}
-				}
-			}
+	if used == 0 {
+		if v, err := getLinuxRootDFFallback(ctx, dfUsedIndex); err == nil {
+			used = v
 		}
 	}
 
