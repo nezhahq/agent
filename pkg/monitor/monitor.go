@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -137,7 +138,12 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 	if err != nil {
 		printf("mem.VirtualMemory error: %v", err)
 	} else {
-		ret.MemUsed = vm.Total - vm.Available
+		if vm.Used > math.MaxInt64 && runtime.GOOS == "linux" {
+			// alternative calculation method for lxc containers where `MemAvailable` can be larger than `MemTotal`
+			ret.MemUsed = vm.Total - vm.Free
+		} else {
+			ret.MemUsed = vm.Used
+		}
 		if runtime.GOOS != "windows" {
 			ret.SwapUsed = vm.SwapTotal - vm.SwapFree
 		}
