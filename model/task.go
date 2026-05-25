@@ -15,6 +15,7 @@ const (
 	TaskTypeFM
 	TaskTypeReportConfig
 	TaskTypeApplyConfig
+	TaskTypeServerTransferApply
 )
 
 type TerminalTask struct {

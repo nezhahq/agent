@@ -99,7 +99,15 @@ func (c *AgentConfig) Save() error {
 		return err
 	}
 
-	return os.WriteFile(c.filePath, data, 0600)
+	if err := os.WriteFile(c.filePath, data, 0600); err != nil {
+		return err
+	}
+	// os.WriteFile only applies the perm argument on CREATE; an existing
+	// 0644 file keeps its permissions even though we asked for 0600.
+	// Explicit Chmod tightens it so the new client_secret never sits in a
+	// world-readable file (a same-host attacker could otherwise read it
+	// and impersonate the agent against the dashboard).
+	return os.Chmod(c.filePath, 0600)
 }
 
 func ValidateConfig(c *AgentConfig, isRemoteEdit bool) error {
