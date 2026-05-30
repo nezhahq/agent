@@ -548,6 +548,19 @@ func doTask(task *pb.Task) *pb.TaskResult {
 		handleApplyConfigTask(task, &result)
 	case model.TaskTypeServerTransferApply:
 		handleServerTransferApplyTask(task, &result)
+	case model.TaskTypeExec:
+		handleExecTask(task, &result)
+	case model.TaskTypeFsList:
+		handleFsListTask(task, &result)
+	case model.TaskTypeFsRead:
+		handleFsReadTask(task, &result)
+	case model.TaskTypeFsWrite:
+		handleFsWriteTask(task, &result)
+	case model.TaskTypeFsDelete:
+		handleFsDeleteTask(task, &result)
+	case model.TaskTypeFsTransfer:
+		handleFsTransferTask(task)
+		return nil
 	case model.TaskTypeKeepalive:
 	default:
 		printf("不支持的任务: %v", task)
