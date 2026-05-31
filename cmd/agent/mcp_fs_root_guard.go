@@ -42,6 +42,22 @@ func isFilesystemRoot(p string) bool {
 		return true
 	}
 
+	// Collapse the extended-length / device prefix so `\\?\C:\` and
+	// `\\?\UNC\srv\share` are recognised as the same roots as `C:\` and
+	// `\\srv\share`. `\\?\UNC\` maps back to the `\\` UNC form; `\\?\X:\`
+	// maps back to the drive-root form `X:\`. (The separator matters: bare
+	// `X:` is the drive-relative current directory, not the volume root, so
+	// it is intentionally NOT treated as a root below.) Windows treats the
+	// `\`-terminated forms as identical volume roots, so a recursive delete
+	// on either wipes the volume.
+	if rest, ok := strings.CutPrefix(p, `\\?\`); ok {
+		if unc, isUNC := cutUNCExtendedPrefix(rest); isUNC {
+			p = `\\` + unc
+		} else {
+			p = rest
+		}
+	}
+
 	// Windows drive root: `X:\`, `X:/`. filepath.Clean keeps the trailing
 	// separator on drive roots, so the length is exactly 3.
 	if len(p) == 3 && p[1] == ':' && isASCIIAlpha(p[0]) && isPathSep(p[2]) {
@@ -71,6 +87,16 @@ func isFilesystemRoot(p string) bool {
 	}
 
 	return false
+}
+
+// cutUNCExtendedPrefix strips a case-insensitive `UNC\` segment from the
+// body of a `\\?\` path and reports whether it was present, so the caller
+// can rebuild the canonical `\\host\share` form.
+func cutUNCExtendedPrefix(rest string) (string, bool) {
+	if len(rest) < 4 || !strings.EqualFold(rest[:4], `UNC\`) {
+		return rest, false
+	}
+	return rest[4:], true
 }
 
 func isASCIIAlpha(b byte) bool {

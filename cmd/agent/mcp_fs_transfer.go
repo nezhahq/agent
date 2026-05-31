@@ -266,35 +266,18 @@ func fsTransferUpload(stream pb.NezhaService_IOStreamClient, req *model.FsTransf
 	}
 
 	h := sha256.New()
-	remaining := req.Size
-	for remaining > 0 {
+	recv := func() ([]byte, error) {
 		data, recvErr := stream.Recv()
 		if recvErr != nil {
-			_ = tmp.Close()
-			cleanup()
-			sendXferErr(stream, "recv: "+recvErr.Error())
-			return
+			return nil, recvErr
 		}
-		payload := data.GetData()
-		if len(payload) == 0 {
-			// keep-alive 心跳，忽略
-			continue
-		}
-		payload, oversendErr := enforceUploadOversend(payload, remaining)
-		if oversendErr != nil {
-			_ = tmp.Close()
-			cleanup()
-			sendXferErr(stream, fsErrMsg(oversendErr))
-			return
-		}
-		if _, writeErr := tmp.Write(payload); writeErr != nil {
-			_ = tmp.Close()
-			cleanup()
-			sendXferErr(stream, fsErrMsg(writeErr))
-			return
-		}
-		h.Write(payload)
-		remaining -= int64(len(payload))
+		return data.GetData(), nil
+	}
+	if _, bodyErr := receiveUploadBody(recv, tmp, h, req.Size); bodyErr != nil {
+		_ = tmp.Close()
+		cleanup()
+		sendXferErr(stream, fsErrMsg(bodyErr))
+		return
 	}
 
 	if expected := req.ExpectedSHA256; expected != "" {
@@ -380,6 +363,41 @@ func enforceUploadOversend(payload []byte, remaining int64) ([]byte, error) {
 		return nil, errors.New("upload oversend: payload exceeds declared remaining size")
 	}
 	return payload, nil
+}
+
+// receiveUploadBody drains exactly size bytes from recv into w (hashing into
+// h) and returns once the declared body is complete. It skips empty keep-alive
+// frames and rejects any frame whose length would cross the size boundary
+// (per-frame oversend). It returns the moment remaining hits 0 and MUST NOT
+// call recv again: the honest dashboard sends no terminator after the body and
+// is already waiting to read the agent's OK, so a post-body Recv would deadlock
+// both sides (see mcp_transfer.go: io.CopyN then readXferFixedHeader). Trailing
+// frames a misbehaving sender appends past size are unreachable here; they die
+// with the per-transfer IOStream and cannot corrupt the size-bounded file.
+func receiveUploadBody(recv func() ([]byte, error), w io.Writer, h hash.Hash, size int64) (int64, error) {
+	var written int64
+	remaining := size
+	for remaining > 0 {
+		payload, err := recv()
+		if err != nil {
+			return written, err
+		}
+		if len(payload) == 0 {
+			continue
+		}
+		payload, err = enforceUploadOversend(payload, remaining)
+		if err != nil {
+			return written, err
+		}
+		n, err := w.Write(payload)
+		written += int64(n)
+		if err != nil {
+			return written, err
+		}
+		h.Write(payload)
+		remaining -= int64(len(payload))
+	}
+	return written, nil
 }
 
 // fsTransferDownload 把 req.Path 的内容推给 dashboard。req.Size 在下行场景
