@@ -1,6 +1,48 @@
 package main
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
+
+// hostAbsolutePaths returns already-clean absolute paths valid on the test's
+// GOOS. resolveFsPath gates on filepath.IsAbs, which is platform-specific
+// (POSIX paths are not absolute on Windows), so the contract samples must
+// match the running OS or the windows CI job fails on otherwise-valid input.
+func hostAbsolutePaths() []string {
+	if runtime.GOOS == "windows" {
+		return []string{
+			`C:\Windows\System32\drivers\etc\hosts`,
+			`C:\ProgramData\nezha\nezha.log`,
+			`C:\Users\alice\notes.md`,
+			`D:\scratch`,
+		}
+	}
+	return []string{
+		"/etc/hosts",
+		"/var/log/nezha.log",
+		"/root/.ssh/authorized_keys",
+		"/home/alice/notes.md",
+		"/tmp/scratch",
+	}
+}
+
+// sensitiveAbsolutePaths returns GOOS-appropriate "looks sensitive" absolute
+// paths used to pin the no-sandbox contract.
+func sensitiveAbsolutePaths() []string {
+	if runtime.GOOS == "windows" {
+		return []string{
+			`C:\Windows\System32\config\SAM`,
+			`C:\Windows\Tasks\anything`,
+			`C:\Program Files\nezha\agent.exe`,
+		}
+	}
+	return []string{
+		"/etc/shadow",
+		"/etc/cron.d/anything",
+		"/usr/local/bin/agent",
+	}
+}
 
 // MCP fs.* 工具的路径契约：agent 只校验"绝对路径"且拒绝把整盘当 root 写删，
 // 不在 agent 内做 sandbox。理由：dashboard/LLM 给出的是 agent 宿主机上的绝对
@@ -13,14 +55,7 @@ import "testing"
 func TestFsPathContract_AcceptsAnyHostAbsolutePath(t *testing.T) {
 	t.Parallel()
 
-	cases := []string{
-		"/etc/hosts",
-		"/var/log/nezha.log",
-		"/root/.ssh/authorized_keys",
-		"/home/alice/notes.md",
-		"/tmp/scratch",
-	}
-	for _, p := range cases {
+	for _, p := range hostAbsolutePaths() {
 		clean, err := resolveFsPath(p)
 		if err != nil {
 			t.Errorf("contract: any host absolute path must be accepted; resolveFsPath(%q) = %v", p, err)
@@ -54,12 +89,7 @@ func TestFsPathContract_RejectsRelativePath(t *testing.T) {
 func TestFsPathContract_NoSandboxRoot(t *testing.T) {
 	t.Parallel()
 
-	sensitive := []string{
-		"/etc/shadow",
-		"/etc/cron.d/anything",
-		"/usr/local/bin/agent",
-	}
-	for _, p := range sensitive {
+	for _, p := range sensitiveAbsolutePaths() {
 		if _, err := resolveFsPath(p); err != nil {
 			t.Errorf("contract: agent does not sandbox FS paths; resolveFsPath(%q) must not reject the path itself, got %v", p, err)
 		}
