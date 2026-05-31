@@ -30,6 +30,41 @@ func TestHasWindowsADSSuffix_RejectsObviousADS(t *testing.T) {
 	}
 }
 
+// NT device-namespace paths (\\?\GLOBALROOT\Device\..., \\.\C:\...) reach
+// the same NTFS final-name parser, so an ADS suffix on them is just as
+// effective at targeting a metadata sidecar. The guard must catch them too,
+// not fall through its else-branch to "not Windows-shaped".
+func TestHasWindowsADSSuffix_RejectsDeviceNamespaceADS(t *testing.T) {
+	cases := []string{
+		`\\?\GLOBALROOT\Device\HarddiskVolume3\Users\Public\victim.txt:evil`,
+		`\\.\C:\Users\Public\victim.txt:evil`,
+		`\\?\Volume{12345678-1234-1234-1234-123456789abc}\file.txt:stream`,
+	}
+	for _, p := range cases {
+		t.Run(p, func(t *testing.T) {
+			if !hasWindowsADSSuffix(p) {
+				t.Fatalf("device-namespace ADS path must be detected: %q", p)
+			}
+		})
+	}
+}
+
+// Device-namespace paths WITHOUT an ADS suffix must still be accepted, so the
+// fix above does not over-reject legitimate volume paths.
+func TestHasWindowsADSSuffix_AcceptsDeviceNamespaceNonADS(t *testing.T) {
+	cases := []string{
+		`\\?\GLOBALROOT\Device\HarddiskVolume3\Users\Public\victim.txt`,
+		`\\.\C:\Users\Public\victim.txt`,
+	}
+	for _, p := range cases {
+		t.Run(p, func(t *testing.T) {
+			if hasWindowsADSSuffix(p) {
+				t.Fatalf("device-namespace non-ADS path must not be flagged: %q", p)
+			}
+		})
+	}
+}
+
 func TestHasWindowsADSSuffix_AcceptsNormalPaths(t *testing.T) {
 	cases := []string{
 		`C:\`,
