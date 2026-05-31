@@ -261,17 +261,15 @@ func handleExecTask(task *pb.Task, result *pb.TaskResult) {
 			runErr = errors.New("cmd.Wait pinned after kill; pipe close forced abort")
 		}
 	}
-	// Best-effort drain so the in-process copy goroutines exit before we
-	// snapshot outBuf/errBuf; ignore deadline misses, the timeout branch
-	// already closed the readers.
-	for i := 0; i < 2; i++ {
-		select {
-		case <-copyDone:
-		case <-time.After(500 * time.Millisecond):
-		}
-	}
+	// Close the reader ends first so any copy goroutine still blocked on a
+	// pipe read (e.g. a detached grandchild holding the write end) is forced
+	// to return, then wait unconditionally for BOTH goroutines to finish.
+	// Reading outBuf/errBuf before the copies exit is a data race —
+	// bytes.Buffer is not concurrency-safe — so the wait must not be bounded.
 	_ = stdoutR.Close()
 	_ = stderrR.Close()
+	<-copyDone
+	<-copyDone
 	elapsed := time.Since(start)
 
 	res := model.ExecResult{

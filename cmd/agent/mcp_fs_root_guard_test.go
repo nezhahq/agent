@@ -32,6 +32,18 @@ func TestIsFilesystemRootRejectsVolumeRoots(t *testing.T) {
 		// UNC share roots.
 		`\\server\share`,
 		`\\server\share\`,
+		// Extended-length / device UNC share roots. Windows accepts
+		// `\\?\UNC\server\share` as the very same share root as
+		// `\\server\share`, so a recursive delete there wipes the whole
+		// share. The guard must collapse the `\\?\UNC\` prefix before
+		// counting host/share segments.
+		`\\?\UNC\server\share`,
+		`\\?\UNC\server\share\`,
+		`\\?\unc\server\share`,
+		// Extended-length drive roots: `\\?\C:\` is the device-path form
+		// of `C:\` and is just as destructive.
+		`\\?\C:\`,
+		`\\?\c:\`,
 		// Defence-in-depth: any path equal to its own parent is by
 		// definition a root and must never be recursively deleted.
 		// (Reserved for future filesystems; cheap to enforce now.)
@@ -56,6 +68,8 @@ func TestIsFilesystemRootAllowsNonRoots(t *testing.T) {
 		`C:\Users\alice\file.txt`,
 		`C:\Users`,
 		`\\server\share\dir`,
+		`\\?\UNC\server\share\dir`,
+		`\\?\C:\Users`,
 		"/a",
 	}
 

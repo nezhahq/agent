@@ -1,9 +1,31 @@
 package main
 
 import (
+	"runtime"
 	"sync"
 	"testing"
 )
+
+// On case-insensitive filesystems (Windows, default macOS APFS) the same
+// file is reachable through case-variant paths. The lock key must fold to
+// one stripe for those GOOS, or two concurrent if_match writers using
+// `C:\Data\a.txt` and `c:\data\A.TXT` race the same file through different
+// stripes and the optimistic-lock guarantee is lost. POSIX stays
+// case-sensitive, so distinct case there must keep distinct keys.
+func TestFsPathLockKeyCaseFolding(t *testing.T) {
+	const upper = `C:\Data\A.TXT`
+	const lower = `c:\data\a.txt`
+
+	sameKey := lockKeyForTest(upper) == lockKeyForTest(lower)
+	caseInsensitiveFS := runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+
+	if caseInsensitiveFS && !sameKey {
+		t.Fatalf("on %s case-variant paths must share a lock key", runtime.GOOS)
+	}
+	if !caseInsensitiveFS && sameKey {
+		t.Fatalf("on %s case-variant paths must keep distinct lock keys", runtime.GOOS)
+	}
+}
 
 // M4 regression: if_match_sha256 is a TOCTOU precondition. Two concurrent
 // MCP writers targeting the same path can both hash the old contents,

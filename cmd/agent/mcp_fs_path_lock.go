@@ -2,6 +2,8 @@ package main
 
 import (
 	"hash/fnv"
+	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -30,9 +32,20 @@ func newFsPathLocker() *fsPathLocker {
 	return &fsPathLocker{}
 }
 
+// normalizeLockKey folds case on case-insensitive filesystems so the same
+// file reached through case-variant paths maps to one stripe. Windows and
+// the default macOS volume are case-insensitive; POSIX is case-sensitive,
+// where distinct case is a distinct file and must keep a distinct key.
+func normalizeLockKey(path string) string {
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
 func (l *fsPathLocker) stripe(path string) *sync.Mutex {
 	h := fnv.New32a()
-	_, _ = h.Write([]byte(path))
+	_, _ = h.Write([]byte(normalizeLockKey(path)))
 	return &l.stripes[h.Sum32()%fsPathLockStripes]
 }
 
@@ -51,6 +64,10 @@ func (l *fsPathLocker) lock(path string) func() {
 // size reports the fixed stripe count; the locker never grows beyond it.
 func (l *fsPathLocker) size() int {
 	return len(l.stripes)
+}
+
+func lockKeyForTest(path string) string {
+	return normalizeLockKey(path)
 }
 
 var fsPathMu = newFsPathLocker()

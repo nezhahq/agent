@@ -468,9 +468,23 @@ func runService(action string, path string) {
 	}
 }
 
+// newSerialTaskResultSender wraps the RequestTask stream's Send with a mutex.
+// dispatchAgentTask runs most tasks in their own goroutine, and they all share
+// one stream; gRPC Go forbids concurrent SendMsg, so every result must funnel
+// through this serializer or overlapping MCP results corrupt the stream.
+func newSerialTaskResultSender(send func(*pb.TaskResult) error) func(*pb.TaskResult) error {
+	var mu sync.Mutex
+	return func(r *pb.TaskResult) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return send(r)
+	}
+}
+
 func receiveTasksDaemon(tasks pb.NezhaService_RequestTaskClient, cancel context.CancelFunc) {
 	var task *pb.Task
 	var err error
+	send := newSerialTaskResultSender(tasks.Send)
 	for {
 		task, err = doWithTimeout(func() (*pb.Task, error) {
 			return tasks.Recv()
@@ -480,7 +494,7 @@ func receiveTasksDaemon(tasks pb.NezhaService_RequestTaskClient, cancel context.
 			cancel()
 			return
 		}
-		dispatchAgentTask(task, tasks.Send, cancel)
+		dispatchAgentTask(task, send, cancel)
 	}
 }
 
