@@ -390,7 +390,11 @@ func handleFsListTask(task *pb.Task, result *pb.TaskResult) {
 	// 分配 []DirEntry，目录里几十万条 entry 时直接吃光 agent 内存。改成按
 	// 批 ReadDir(n) 读取，达到 mcpFsListMaxEntries 后仍继续计数（Total）但
 	// 不再保留切片，O(返回上限) 内存而非 O(目录大小)。
-	dirf, err := os.Open(clean)
+	//
+	// openDirNoFollow（非阻塞 + O_DIRECTORY + O_NOFOLLOW）取代 os.Open：消除
+	// Lstat 确认目录后、打开前目标被换成 FIFO/symlink 的 TOCTOU——否则只读
+	// 打开 FIFO 会永久阻塞这个无超时的 goroutine（远程 DoS）。
+	dirf, err := openDirNoFollow(clean)
 	if err != nil {
 		mcpReply(result, model.FsListResult{Error: fsErrMsg(err)})
 		return
