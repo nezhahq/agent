@@ -373,6 +373,19 @@ func handleFsListTask(task *pb.Task, result *pb.TaskResult) {
 		mcpReply(result, model.FsListResult{Error: err.Error()})
 		return
 	}
+	// Lstat-gate before os.Open: opening a FIFO/socket read-only blocks until
+	// a peer appears, and this task has no timeout — a FIFO target would pin
+	// the goroutine forever (remote DoS). Only directories are listable;
+	// reject everything else up front (mirrors fs.read's IsRegular guard).
+	li, err := os.Lstat(clean)
+	if err != nil {
+		mcpReply(result, model.FsListResult{Error: fsErrMsg(err)})
+		return
+	}
+	if !li.IsDir() {
+		mcpReply(result, model.FsListResult{Error: "path is not a directory"})
+		return
+	}
 	// 流式读取目录而不是一次性 os.ReadDir(clean)：后者会在截断之前为整个目录
 	// 分配 []DirEntry，目录里几十万条 entry 时直接吃光 agent 内存。改成按
 	// 批 ReadDir(n) 读取，达到 mcpFsListMaxEntries 后仍继续计数（Total）但
