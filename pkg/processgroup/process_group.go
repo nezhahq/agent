@@ -4,10 +4,14 @@ package processgroup
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"sync"
 	"syscall"
 )
+
+// errProcessExitGroupClosed guards AddProcess on a closed group, mirroring the Windows side.
+var errProcessExitGroupClosed = errors.New("process exit group is closed")
 
 type ProcessExitGroup struct {
 	cmds   []*exec.Cmd
@@ -53,6 +57,11 @@ func NewExecCommand(name string, args ...string) *exec.Cmd {
 }
 
 func (g *ProcessExitGroup) Dispose() error {
+	if g.closed {
+		return nil
+	}
+	defer g.Close()
+
 	var wg sync.WaitGroup
 	wg.Add(len(g.cmds))
 
@@ -75,6 +84,9 @@ func (g *ProcessExitGroup) Dispose() error {
 // 仅向整组发 SIGKILL 让内核清掉孤立的孙子进程；不再调 c.Wait，
 // 否则会和外层 cmd.Wait 形成 ECHILD 或被孙子持有的 stdout 阻塞。
 func (g *ProcessExitGroup) ReapDescendants() {
+	if g.closed {
+		return
+	}
 	for i := range g.cmds {
 		pgid := 0
 		if i < len(g.pgids) {
@@ -87,6 +99,9 @@ func (g *ProcessExitGroup) ReapDescendants() {
 }
 
 func (g *ProcessExitGroup) AddProcess(cmd *exec.Cmd) error {
+	if g.closed {
+		return errProcessExitGroupClosed
+	}
 	g.cmds = append(g.cmds, cmd)
 	// Getpgid 失败时 pgid 保持 0，让 killChildProcess 走 c.Process.Kill
 	// 单进程 fallback；不能把 pid 当作 pgid 存下来再执行 Kill(-pid)，否则
