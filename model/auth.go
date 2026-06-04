@@ -28,7 +28,12 @@ func (a *AuthHandler) GetRequestMetadata(ctx context.Context, uri ...string) (ma
 		return nil, ErrAuthCredentialsNotConfigured
 	}
 	secret, uuid := a.Credentials()
-	return map[string]string{"client_secret": secret, "client_uuid": uuid}, nil
+	return map[string]string{
+		"client-secret": secret,
+		"client-uuid":   uuid,
+		"client_secret": secret,
+		"client_uuid":   uuid,
+	}, nil
 }
 
 func (a *AuthHandler) RequireTransportSecurity() bool {
