@@ -25,6 +25,9 @@ func TestAuthHandlerReadsCredentialsPerCall(t *testing.T) {
 	if md["client_secret"] != "old-secret" {
 		t.Fatalf("expected old-secret, got %q", md["client_secret"])
 	}
+	if md["client-secret"] != "old-secret" {
+		t.Fatalf("expected old-secret in hyphenated metadata, got %q", md["client-secret"])
+	}
 
 	// Rotate the credential the way handleApplyConfigTask's reload would after
 	// the save-then-swap completes.
@@ -36,6 +39,9 @@ func TestAuthHandlerReadsCredentialsPerCall(t *testing.T) {
 	}
 	if md["client_secret"] != "new-secret" {
 		t.Fatalf("AuthHandler must read the closure on every call to pick up rotation, got %q", md["client_secret"])
+	}
+	if md["client-secret"] != "new-secret" {
+		t.Fatalf("AuthHandler must update hyphenated metadata on every call, got %q", md["client-secret"])
 	}
 }
 
@@ -85,9 +91,31 @@ func TestAuthHandlerCoherentCredentialPair(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetRequestMetadata: %v", err)
 		}
-		s, u := md["client_secret"], md["client_uuid"]
+		s, u := md["client-secret"], md["client-uuid"]
 		if (s == "secret-A" && u != "uuid-A") || (s == "secret-B" && u != "uuid-B") {
 			t.Fatalf("torn credential pair: secret=%q uuid=%q (must come from a single snapshot)", s, u)
+		}
+	}
+}
+
+func TestAuthHandlerEmitsLegacyAndHyphenatedMetadata(t *testing.T) {
+	a := &AuthHandler{
+		Credentials: func() (string, string) { return "secret", "uuid" },
+	}
+
+	md, err := a.GetRequestMetadata(context.Background())
+	if err != nil {
+		t.Fatalf("GetRequestMetadata: %v", err)
+	}
+
+	for _, key := range []string{"client-secret", "client_secret"} {
+		if md[key] != "secret" {
+			t.Fatalf("%s = %q, want secret", key, md[key])
+		}
+	}
+	for _, key := range []string{"client-uuid", "client_uuid"} {
+		if md[key] != "uuid" {
+			t.Fatalf("%s = %q, want uuid", key, md[key])
 		}
 	}
 }
