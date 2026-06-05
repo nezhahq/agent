@@ -939,6 +939,10 @@ func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
 	cmd.Stdout = &b
 	cmd.Env = os.Environ()
 	if err = cmd.Start(); err != nil {
+		// Start failed: no process to wait on and the timeout goroutine has
+		// not been launched yet, so just release the timer before returning,
+		// otherwise it lingers for 2h.
+		timeout.Stop()
 		result.Data = err.Error()
 		return
 	}
@@ -947,7 +951,6 @@ func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
 		select {
 		case <-timeout.C:
 			result.Data = "任务执行超时\n"
-			close(endCh)
 			pg.Dispose()
 		case <-endCh:
 			timeout.Stop()
@@ -956,10 +959,14 @@ func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
 	if err = cmd.Wait(); err != nil {
 		result.Data += fmt.Sprintf("%s\n%s", b.String(), err.Error())
 	} else {
-		close(endCh)
 		result.Data = b.String()
 		result.Successful = true
 	}
+	// Always signal completion so the timeout goroutine exits and stops the
+	// timer, regardless of whether the command succeeded or failed. The
+	// previous code only closed endCh on success, stranding one goroutine and
+	// one 2h timer for every non-zero-exit command.
+	close(endCh)
 	pg.Dispose()
 	result.Delay = float32(time.Since(startedAt).Seconds())
 }
