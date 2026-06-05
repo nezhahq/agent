@@ -135,3 +135,68 @@ func TestAuthHandlerGetRequestMetadataNilSafe(t *testing.T) {
 		t.Fatal("zero-value AuthHandler (no Credentials closure) must return an error, not panic")
 	}
 }
+
+// RequireTransportSecurity must track the live RequireTLS closure so a
+// TLS-enabled agent refuses to send client_secret over a cleartext gRPC
+// channel, while a plaintext intranet agent (RequireTLS -> false) keeps
+// connecting. This is the core of the NEZHA-AGENT-001 fix: gate credential
+// disclosure on the transport without breaking TLS:false deployments.
+func TestAuthHandlerRequireTransportSecurityTracksConfig(t *testing.T) {
+	tlsEnabled := false
+	a := &AuthHandler{
+		RequireTLS: func() bool { return tlsEnabled },
+	}
+
+	if a.RequireTransportSecurity() {
+		t.Fatal("TLS:false agent must allow plaintext transport, else intranet deployments break")
+	}
+
+	tlsEnabled = true
+	if !a.RequireTransportSecurity() {
+		t.Fatal("TLS:true agent must require transport security to avoid leaking credentials over cleartext")
+	}
+
+	tlsEnabled = false
+	if a.RequireTransportSecurity() {
+		t.Fatal("RequireTransportSecurity must re-read the closure on every call to follow a live config reload")
+	}
+}
+
+// Intranet baseline: a plaintext agent (TLS:false) must both be allowed onto
+// the cleartext transport AND still hand its credentials to the dashboard, so
+// the everyday LAN/VPC deployment keeps authenticating exactly as before the
+// fix. This guards against a regression where requiring TLS (or dropping the
+// credentials) would silently break intranet users.
+func TestAuthHandlerIntranetPlaintextStillAuthenticates(t *testing.T) {
+	a := &AuthHandler{
+		Credentials: func() (string, string) { return "intranet-secret", "intranet-uuid" },
+		RequireTLS:  func() bool { return false },
+	}
+
+	if a.RequireTransportSecurity() {
+		t.Fatal("intranet agent (TLS:false) must be allowed on a plaintext transport")
+	}
+
+	md, err := a.GetRequestMetadata(context.Background())
+	if err != nil {
+		t.Fatalf("intranet agent must still produce credentials, got %v", err)
+	}
+	if md["client_secret"] != "intranet-secret" || md["client_uuid"] != "intranet-uuid" {
+		t.Fatalf("intranet agent must send its real credentials, got %v", md)
+	}
+}
+
+// A nil receiver or an AuthHandler constructed without RequireTLS must not
+// panic and must default to "do not require TLS" (legacy behaviour), so
+// existing call sites and grpc-go's transport check stay safe.
+func TestAuthHandlerRequireTransportSecurityNilSafe(t *testing.T) {
+	var nilHandler *AuthHandler
+	if nilHandler.RequireTransportSecurity() {
+		t.Fatal("nil receiver must return false, not panic or require TLS")
+	}
+
+	zero := &AuthHandler{}
+	if zero.RequireTransportSecurity() {
+		t.Fatal("AuthHandler without RequireTLS closure must default to false (legacy plaintext-allowed behaviour)")
+	}
+}

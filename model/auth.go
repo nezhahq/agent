@@ -13,6 +13,11 @@ import (
 // to switch credentials atomically.
 type AuthHandler struct {
 	Credentials func() (secret, uuid string)
+	// RequireTLS reports whether the agent's transport must be encrypted, read
+	// from the live agent config so plaintext intranet deployments (TLS:false)
+	// keep working while TLS-enabled agents refuse to leak credentials over a
+	// cleartext channel. nil means "do not require TLS" (legacy behaviour).
+	RequireTLS func() bool
 }
 
 // ErrAuthCredentialsNotConfigured surfaces from gRPC dial metadata when an
@@ -37,5 +42,8 @@ func (a *AuthHandler) GetRequestMetadata(ctx context.Context, uri ...string) (ma
 }
 
 func (a *AuthHandler) RequireTransportSecurity() bool {
-	return false
+	if a == nil || a.RequireTLS == nil {
+		return false
+	}
+	return a.RequireTLS()
 }
