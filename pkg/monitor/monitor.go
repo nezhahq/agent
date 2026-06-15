@@ -107,12 +107,12 @@ func GetHost() *model.Host {
 		printf("mem.VirtualMemory error: %v", err)
 	} else {
 		ret.MemTotal = mv.Total
-		if runtime.GOOS != "windows" {
+		if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
 			ret.SwapTotal = mv.SwapTotal
 		}
 	}
 
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		ms, err := mem.SwapMemory()
 		if err != nil {
 			printf("mem.SwapMemory error: %v", err)
@@ -144,12 +144,12 @@ func GetState(skipConnectionCount bool, skipProcsCount bool) *model.HostState {
 		} else {
 			ret.MemUsed = vm.Used
 		}
-		if runtime.GOOS != "windows" {
+		if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
 			ret.SwapUsed = vm.SwapTotal - vm.SwapFree
 		}
 	}
-	if runtime.GOOS == "windows" {
-		// gopsutil 在 Windows 下不能正确取 swap
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		// gopsutil 在 Windows/Darwin 下通过 SwapMemory 获取 swap
 		ms, err := mem.SwapMemory()
 		if err != nil {
 			printf("mem.SwapMemory error: %v", err)
