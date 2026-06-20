@@ -17,6 +17,7 @@ Agent of Nezha Monitoring
 <a href="https://github.com/NewbieOrange" title="NewbieOrange"><img src="https://avatars.githubusercontent.com/u/7200314?v=4" width="50;" alt="NewbieOrange"/></a>
 <a href="https://github.com/pexcn" title="Sing Yu Chan"><img src="https://avatars.githubusercontent.com/u/4590439?v=4" width="50;" alt="Sing Yu Chan"/></a>
 <a href="https://github.com/elysia-best" title="Yinan Qin"><img src="https://avatars.githubusercontent.com/u/39023210?v=4" width="50;" alt="Yinan Qin"/></a>
+<a href="https://github.com/miaojior" title="miaojior"><img src="https://avatars.githubusercontent.com/u/79573934?v=4" width="50;" alt="miaojior"/></a>
 <a href="https://github.com/xream" title="xream"><img src="https://avatars.githubusercontent.com/u/1210282?v=4" width="50;" alt="xream"/></a>
 <a href="https://github.com/xykt" title="xykt"><img src="https://avatars.githubusercontent.com/u/152045469?v=4" width="50;" alt="xykt"/></a>
 <a href="https://github.com/zhdsmy" title="zhdsmy"><img src="https://avatars.githubusercontent.com/u/8348149?v=4" width="50;" alt="zhdsmy"/></a>
