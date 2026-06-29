@@ -18,7 +18,7 @@ require (
 	github.com/knadh/koanf/v2 v2.3.5
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20260216052712-d6b71f5180c1
 	github.com/nezhahq/service v0.0.0-20250122132143-5f38afb105e9
-	github.com/prometheus-community/pro-bing v0.9.0
+	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/refraction-networking/utls v1.8.2
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/tidwall/gjson v1.19.0
