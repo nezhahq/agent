@@ -127,36 +127,51 @@ func decideFsTransferEarlyError(cfg model.AgentConfig, task *pb.Task) (*model.Fs
 func handleFsTransferTask(task *pb.Task) {
 	req, earlyErr, hasStream := decideFsTransferEarlyError(agentConfig, task)
 	if earlyErr != "" && !hasStream {
-		// 没有可用 stream_id：无法 attach，也就无法发 NZTE。dashboard 侧的
-		// WaitForAgent 会在 30s 后超时报错；这里只能记录日志。
 		printf("%s", earlyErr)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), mcpFsTransferIOTimeout)
-	defer cancel()
+	// 不 defer cancel() — cancel 发 RST_STREAM 终止 stream，
+	// 可能抢在 CloseSend 之前到达，dashboard 丢数据。
 
 	stream, err := client.IOStream(ctx)
 	if err != nil {
-		// 网络层故障，attach 不上；同样只能让 dashboard 等 WaitForAgent 超时。
+		cancel()
 		printf("FsTransfer IOStream 拨号失败: %v", err)
 		return
 	}
-	defer stream.CloseSend()
 
 	sender := newSerialIOStreamSender(stream)
 	if err := sender.Send(&pb.IOStreamData{Data: append(
 		[]byte{0xff, 0x05, 0xff, 0x05}, []byte(req.StreamID)...,
 	)}); err != nil {
+		cancel()
 		printf("FsTransfer 发送 streamId 失败: %v", err)
 		return
 	}
 
 	keepAliveCtx, stopKeepAlive := context.WithCancel(ctx)
-	defer stopKeepAlive()
 	go serializedKeepAlive(keepAliveCtx, sender, 30*time.Second)
 
 	runFsTransferOnStream(streamWithSerialSender{Stream: stream, sender: sender}, earlyErr, req)
+
+	// 传输完成：先停 keepalive，再 CloseSend，等 dashboard 关流后 cancel。
+	// 顺序保证 CloseSend 在 cancel 之前送达，drain 保证在 cancel 前收到对端确认。
+	stopKeepAlive()
+	stream.CloseSend()
+	drainToEOF(stream)
+	cancel()
+}
+
+// drainToEOF 丢弃空帧直到对端关闭。dashboard 读完所有数据后会通过
+// CloseStream 关流，agent 端 Recv() 收到 io.EOF。
+func drainToEOF(stream pb.NezhaService_IOStreamClient) {
+	for {
+		if _, err := stream.Recv(); err != nil {
+			return
+		}
+	}
 }
 
 // streamWithSerialSender 让 runFsTransferOnStream 仍然按
