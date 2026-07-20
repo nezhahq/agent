@@ -4,136 +4,90 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/nezhahq/agent/model"
+	"github.com/nezhahq/agent/pkg/pty"
 	pb "github.com/nezhahq/agent/proto"
 )
 
-type terminalWireScenario struct {
-	streamID      string
-	incoming      [][]byte
-	waitForOutput []byte
-}
-
-type terminalWireStream struct {
-	*iostreamWireStream
-	incoming       [][]byte
-	waitForOutput  []byte
-	outputObserved chan struct{}
-	observeOnce    sync.Once
-	closeCount     atomic.Int32
-}
-
-func (s *terminalWireStream) Send(data *pb.IOStreamData) error {
-	if err := s.iostreamWireStream.Send(data); err != nil {
-		return err
-	}
-	if bytes.Contains(data.GetData(), s.waitForOutput) {
-		s.observeOnce.Do(func() { close(s.outputObserved) })
-	}
-	return nil
-}
-
-func (s *terminalWireStream) Recv() (*pb.IOStreamData, error) {
-	if len(s.incoming) > 0 {
-		data := s.incoming[0]
-		s.incoming = s.incoming[1:]
-		return &pb.IOStreamData{Data: data}, nil
-	}
-	select {
-	case <-s.outputObserved:
-		return nil, io.EOF
-	case <-time.After(5 * time.Second):
-		return nil, io.ErrNoProgress
-	}
-}
-
-func (s *terminalWireStream) CloseSend() error {
-	s.closeCount.Add(1)
-	return nil
-}
-
-func runTerminalWireScenario(t *testing.T, scenario terminalWireScenario) [][]byte {
-	t.Helper()
-	originalClient, originalConfig := client, agentConfig
-	stream := &terminalWireStream{
-		iostreamWireStream: &iostreamWireStream{},
-		incoming:           scenario.incoming,
-		waitForOutput:      scenario.waitForOutput,
-		outputObserved:     make(chan struct{}),
-	}
-	client = &iostreamWireClient{stream: stream}
-	agentConfig = model.AgentConfig{}
+func TestTerminalWire_InputResizeAndUnknownTagsUseInjectedPTY(t *testing.T) {
+	// Given
+	originalConfig := agentConfig
+	originalHandlerFactory := terminalHandlerForTask
+	restoreRuntimeConfigSnapshot(t)
 	t.Cleanup(func() {
-		client, agentConfig = originalClient, originalConfig
+		agentConfig = originalConfig
+		terminalHandlerForTask = originalHandlerFactory
 	})
-
-	handlerDone := make(chan struct{})
-	go func() {
-		defer close(handlerDone)
-		handleTerminalTask(&pb.Task{Data: `{"StreamID":"` + scenario.streamID + `"}`})
-	}()
-	select {
-	case <-handlerDone:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Terminal handler goroutine did not complete before deadline")
-	}
-	if closeCount := stream.closeCount.Load(); closeCount != 1 {
-		t.Fatalf("Terminal CloseSend count = %d, want 1", closeCount)
-	}
-	return stream.frames()
-}
-
-func TestTerminalWire_InputAndResizeTagsDriveTerminal(t *testing.T) {
-	command := []byte{0x70, 0x72, 0x69, 0x6e, 0x74, 0x66, 0x20, 0x54, 0x45, 0x52, 0x4d, 0x49, 0x4e, 0x41, 0x4c, 0x5f, 0x54, 0x41, 0x47, 0x5f, 0x4f, 0x4b, 0x5c, 0x6e, 0x0a}
-	validInput := append([]byte{0x00}, command...)
-	mutatedInput := append([]byte{0x02}, command...)
-	wantAttach := []byte{0xff, 0x05, 0xff, 0x05, 0x74, 0x65, 0x72, 0x6d, 0x2d, 0x74, 0x61, 0x67}
-
-	validFrames := runTerminalWireScenario(t, terminalWireScenario{
-		streamID:      "term-tag",
-		incoming:      [][]byte{validInput},
-		waitForOutput: []byte("TERMINAL_TAG_OK"),
-	})
-	if len(validFrames) < 2 || !bytes.Equal(validFrames[0], wantAttach) {
-		t.Fatalf("Terminal valid-tag attach or output changed: frames=%q", validFrames)
-	}
-	validOutputObserved := false
-	for _, frame := range validFrames[1:] {
-		validOutputObserved = validOutputObserved || bytes.Contains(frame, []byte("TERMINAL_TAG_OK"))
-	}
-	if !validOutputObserved {
-		t.Fatalf("Terminal handler did not execute literal tag 0 input: frames=%q", validFrames)
-	}
-
-	mutatedFrames := runTerminalWireScenario(t, terminalWireScenario{
-		streamID: "term-tag",
-		incoming: [][]byte{
-			mutatedInput,
-			{0x01, 0x7b, 0x22, 0x43, 0x6f, 0x6c, 0x73, 0x22, 0x3a, 0x33, 0x31, 0x2c, 0x22, 0x52, 0x6f, 0x77, 0x73, 0x22, 0x3a, 0x31, 0x37, 0x7d},
-			{0x00, 0x73, 0x74, 0x74, 0x79, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x0a},
-		},
-		waitForOutput: []byte("17 31"),
-	})
-	if len(mutatedFrames) < 2 || !bytes.Equal(mutatedFrames[0], wantAttach) {
-		t.Fatalf("Terminal mutated-tag attach or control output changed: frames=%q", mutatedFrames)
-	}
-	resizeOutputObserved := false
-	for _, frame := range mutatedFrames[1:] {
-		if bytes.Contains(frame, []byte("TERMINAL_TAG_OK")) {
-			t.Fatalf("Terminal handler accepted one-byte tag mutation: frames=%q", mutatedFrames)
+	agentConfig = model.AgentConfig{}
+	publishRuntimeConfig(agentConfig)
+	stream := &terminalTestStream{}
+	tty := newTerminalTestPTY()
+	terminalOutput := []byte("terminal-output")
+	tty.reads <- terminalPTYRead{data: terminalOutput}
+	outputSent := make(chan struct{})
+	stream.sendHook = func(data []byte) error {
+		if bytes.Equal(data, terminalOutput) {
+			close(outputSent)
 		}
-		resizeOutputObserved = resizeOutputObserved || bytes.Contains(frame, []byte("17 31"))
+		return nil
 	}
-	if !resizeOutputObserved {
-		t.Fatalf("Terminal handler did not execute literal resize and input tags: frames=%q", mutatedFrames)
+	incoming := [][]byte{
+		append([]byte{0}, []byte("literal-input")...),
+		[]byte{1, '{', '"', 'C', 'o', 'l', 's', '"', ':', '3', '1', ',', '"', 'R', 'o', 'w', 's', '"', ':', '1', '7', '}'},
+		append([]byte{2}, []byte("ignored-input")...),
 	}
-	t.Logf("Terminal valid frames=%x", validFrames)
-	t.Logf("Terminal mutated-tag/resize frames=%x", mutatedFrames)
+	nextIncoming := 0
+	stream.recvHook = func() (*pb.IOStreamData, error) {
+		if nextIncoming < len(incoming) {
+			data := incoming[nextIncoming]
+			nextIncoming++
+			return &pb.IOStreamData{Data: data}, nil
+		}
+		<-outputSent
+		return nil, io.EOF
+	}
+	// Keep protocol assertions independent from host PTY behavior on every platform.
+	terminalHandlerForTask = func() terminalHandler {
+		return terminalHandler{
+			openStream: func(ctx context.Context) (pb.NezhaService_IOStreamClient, error) {
+				stream.ctx = ctx
+				return stream, nil
+			},
+			startPTY:          func() (pty.IPty, error) { return tty, nil },
+			startKeepalive:    func(*ioStreamWriteOwner, time.Duration) error { return nil },
+			keepaliveInterval: time.Hour,
+			shutdownTimeout:   100 * time.Millisecond,
+		}
+	}
+	handlerDone := make(chan struct{})
+
+	// When
+	go func() {
+		handleTerminalTask(&pb.Task{Data: `{"StreamID":"term-tag"}`})
+		close(handlerDone)
+	}()
+	awaitStreamSignal(t, handlerDone, "terminal wire handler completion")
+
+	// Then
+	frames, maxInFlight, closeCount, recvCount := stream.observation()
+	wantAttach := terminalAttachFrame("term-tag")
+	if len(frames) != 2 || !bytes.Equal(frames[0], wantAttach) || !bytes.Equal(frames[1], terminalOutput) {
+		t.Fatalf("Terminal frames = %q, want attach followed by PTY output", frames)
+	}
+	if maxInFlight != 1 || closeCount != 1 || recvCount != 4 || tty.closes() != 1 {
+		t.Fatalf("Terminal lifecycle: max_writes=%d close_send=%d recv=%d pty_close=%d, want 1/1/4/1", maxInFlight, closeCount, recvCount, tty.closes())
+	}
+	tty.mu.Lock()
+	defer tty.mu.Unlock()
+	if len(tty.writes) != 1 || !bytes.Equal(tty.writes[0], []byte("literal-input")) {
+		t.Fatalf("Terminal input writes = %q, want literal tag 0 payload", tty.writes)
+	}
+	if len(tty.sizes) != 1 || tty.sizes[0] != (terminalWindowSize{Cols: 31, Rows: 17}) {
+		t.Fatalf("Terminal resize calls = %+v, want cols=31 rows=17", tty.sizes)
+	}
 }
 
 func TestTerminalWire_KeepAliveGoroutineReportsCompletion(t *testing.T) {
