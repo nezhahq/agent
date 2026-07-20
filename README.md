@@ -15,7 +15,7 @@ Agent of Nezha Monitoring
 <a href="https://github.com/ChrisKimZHT" title="Haotian Zou"><img src="https://avatars.githubusercontent.com/u/49368462?v=4" width="50;" alt="Haotian Zou"/></a>
 <a href="https://github.com/yuanweize" title="IYUANWEIZE"><img src="https://avatars.githubusercontent.com/u/30067203?v=4" width="50;" alt="IYUANWEIZE"/></a>
 <a href="https://github.com/NewbieOrange" title="NewbieOrange"><img src="https://avatars.githubusercontent.com/u/7200314?v=4" width="50;" alt="NewbieOrange"/></a>
-<a href="https://github.com/pexcn" title="Sing Yu Chan"><img src="https://avatars.githubusercontent.com/u/4590439?v=4" width="50;" alt="Sing Yu Chan"/></a>
+<a href="https://github.com/pexcn" title="pexcn"><img src="https://avatars.githubusercontent.com/u/4590439?v=4" width="50;" alt="pexcn"/></a>
 <a href="https://github.com/elysia-best" title="Yinan Qin"><img src="https://avatars.githubusercontent.com/u/39023210?v=4" width="50;" alt="Yinan Qin"/></a>
 <a href="https://github.com/nowubh" title="mou"><img src="https://avatars.githubusercontent.com/u/22713482?v=4" width="50;" alt="mou"/></a>
 <a href="https://github.com/miaojior" title="miaojior"><img src="https://avatars.githubusercontent.com/u/79573934?v=4" width="50;" alt="miaojior"/></a>
