@@ -19,6 +19,8 @@ func TestAnchoredLockWindow_DoesNotHoldStripeDuringReceive(t *testing.T) {
 	receiveEntered := make(chan struct{})
 	receiveRelease := make(chan struct{})
 	done := make(chan error, 1)
+	var commitResult hostfs.AtomicReplaceResult
+	var commitErr error
 
 	// When
 	go func() {
@@ -30,8 +32,12 @@ func TestAnchoredLockWindow_DoesNotHoldStripeDuringReceive(t *testing.T) {
 			}
 			return pending.Seal()
 		}, func() error {
-			_, err := pending.CommitIfMatch("")
-			return err
+			commitResult, commitErr = pending.CommitIfMatch("")
+			// Windows can report an unsupported parent sync after the rename committed.
+			if commitErr != nil && !errors.Is(commitErr, hostfs.ErrCommittedDurabilityUnknown) {
+				return commitErr
+			}
+			return nil
 		})
 	}()
 	awaitTestSignal(t, receiveEntered, "receive entry")
@@ -47,6 +53,12 @@ func TestAnchoredLockWindow_DoesNotHoldStripeDuringReceive(t *testing.T) {
 	// Then
 	if err := awaitTestError(t, done, "anchored commit"); err != nil {
 		t.Fatalf("receiveThenCommitUnderPathLock(): %v", err)
+	}
+	if !commitResult.Committed {
+		t.Fatalf("commit result = %+v, want committed replacement", commitResult)
+	}
+	if errors.Is(commitErr, hostfs.ErrCommittedDurabilityUnknown) && commitResult.Durability != hostfs.DurabilityUnknown {
+		t.Fatalf("commit result = %+v with durability error %v, want unknown durability", commitResult, commitErr)
 	}
 	content, err := anchor.Root().ReadFile(anchor.FinalName())
 	if err != nil || string(content) != "new-content" {
