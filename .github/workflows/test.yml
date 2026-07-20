@@ -2,37 +2,119 @@ name: Run Tests
 
 on:
   push:
-    paths-ignore:
-      - ".github/workflows/agent.yml"
-      - ".github/workflows/codeql-analysis.yml"
-      - ".github/workflows/test-on-pr.yml"
-      - ".github/workflows/contributors.yml"
-      - "README.md"
-      - ".goreleaser.yml"
+    branches:
+      - main
   pull_request:
     branches:
       - main
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   tests:
+    name: Ordinary tests (${{ matrix.os }})
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
-        os: [ubuntu, windows, macos]
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
-    runs-on: ${{ matrix.os }}-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: ^1.26.1
+          cache: false
 
       - name: Unit test
-        run: |
-          go test -v ./...
+        run: go test -mod=readonly -count=1 ./...
 
-      #- name: Run Gosec Security Scanner
-      #  if: runner.os == 'Linux'
-      #  run: |
-      #    go install github.com/securego/gosec/v2/cmd/gosec@v2.19.0
-      #    gosec -exclude=G104 ./...
+  linux-race-quality:
+    name: Linux race and quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: ^1.26.1
+          cache: false
+
+      - name: Race and shuffle tests
+        run: go test -mod=readonly -race -shuffle=on -count=1 ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check formatting
+        shell: bash
+        run: test -z "$(git ls-files -co --exclude-standard '*.go' -z | xargs -0 gofmt -l)"
+
+      - name: Build agent
+        run: go build ./cmd/agent
+
+  agentcompat-stress:
+    name: Linux agent compatibility stress
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Checkout Agent revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          path: agent
+          persist-credentials: false
+      - name: Checkout pinned Nezha revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: nezhahq/nezha
+          ref: 5d7fef640873d2bb8c3e763c194e7b281b3c9e75
+          path: nezha
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: ^1.26.1
+          cache: false
+      - name: Require Agent workflow policy tests
+        working-directory: nezha
+        run: |
+          go test -mod=readonly -tags=agentcompat -list '^TestPolicy_AgentQualityWorkflow$' ./integration/agentcompat/internal/workflowpolicy | grep -Fx 'TestPolicy_AgentQualityWorkflow'
+          go test -mod=readonly -tags=agentcompat -list '^TestPolicy_AgentStressWorkflowRunsPinnedCrossRepositoryTest$' ./integration/agentcompat/internal/workflowpolicy | grep -Fx 'TestPolicy_AgentStressWorkflowRunsPinnedCrossRepositoryTest'
+          go test -mod=readonly -tags=agentcompat -run '^(TestPolicy_AgentQualityWorkflow|TestPolicy_AgentStressWorkflowRunsPinnedCrossRepositoryTest)$' -count=1 ./integration/agentcompat/internal/workflowpolicy
+      - name: Require named stress test
+        working-directory: nezha
+        run: go test -mod=readonly -tags=agentcompat -list '^TestStressPRFullEightAgentExactlyOnce$' ./integration/agentcompat/internal/scenario | grep -Fx 'TestStressPRFullEightAgentExactlyOnce'
+      - name: Run PR-full agent compatibility stress
+        working-directory: nezha
+        env:
+          AGENTCOMPAT_NEZHA_SOURCE: ${{ github.workspace }}/nezha
+          AGENTCOMPAT_AGENT_SOURCE: ${{ github.workspace }}/agent
+        run: go test -mod=readonly -tags=agentcompat -run '^TestStressPRFullEightAgentExactlyOnce$' -count=1 -v ./integration/agentcompat/internal/scenario
+
+  agent-quality-required:
+    name: agent-quality-required
+    if: ${{ always() }}
+    needs:
+      - tests
+      - linux-race-quality
+      - agentcompat-stress
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all blocking jobs to pass
+        shell: bash
+        run: |
+          test "${{ needs.tests.result }}" = success
+          test "${{ needs.linux-race-quality.result }}" = success
+          test "${{ needs.agentcompat-stress.result }}" = success
