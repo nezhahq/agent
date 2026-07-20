@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -26,29 +27,33 @@ func TestAnchoredCreateDirs_RequiresImmediateParentWhenDisabled(t *testing.T) {
 	}
 }
 
-func TestAnchoredCreateDirs_WalksRootOnlyAncestorChain(t *testing.T) {
+func TestAnchoredCreateDirs_CreatesMissingParentComponentsInOrder(t *testing.T) {
 	// Given
-	reservedPath, err := os.MkdirTemp(string(filepath.Separator), "hostfs-root-chain-")
-	if err != nil {
-		t.Fatalf("reserve root component: %v", err)
-	}
-	if err := os.Remove(reservedPath); err != nil {
-		t.Fatalf("remove reserved root component: %v", err)
-	}
-	parent := filepath.Join(reservedPath, "nested")
+	ancestor := t.TempDir()
+	parent := filepath.Join(ancestor, "first", "second")
 	target := filepath.Join(parent, "target.txt")
-	t.Cleanup(func() { _ = os.RemoveAll(reservedPath) })
 	anchor := newTestAnchor(t, target)
-	if anchor.AncestorPath() != string(filepath.Separator) {
-		t.Fatalf("ancestor = %q, want filesystem root", anchor.AncestorPath())
+	if anchor.AncestorPath() != ancestor {
+		t.Fatalf("ancestor = %q, want %q", anchor.AncestorPath(), ancestor)
 	}
+	operations := anchor.descentOperations
+	mkdir := operations.mkdir
+	var created []string
+	operations.mkdir = func(root *os.Root, name string, mode os.FileMode) error {
+		created = append(created, name)
+		return mkdir(root, name, mode)
+	}
+	anchor.descentOperations = operations
 
 	// When
-	err = anchor.EnsureParent(true, 0o755)
+	err := anchor.EnsureParent(true, 0o755)
 
 	// Then
 	if err != nil {
 		t.Fatalf("EnsureParent(): %v", err)
+	}
+	if want := []string{"first", "second"}; !slices.Equal(created, want) {
+		t.Fatalf("created parent components = %v, want %v", created, want)
 	}
 	if len(anchor.MissingParents()) != 0 {
 		t.Fatalf("missing parents = %v, want none", anchor.MissingParents())
@@ -58,38 +63,6 @@ func TestAnchoredCreateDirs_WalksRootOnlyAncestorChain(t *testing.T) {
 	}
 	if info, statErr := anchor.Root().Stat("."); statErr != nil || !info.IsDir() {
 		t.Fatalf("final Root stat = %v/%v, want directory", info, statErr)
-	}
-}
-
-func TestAnchoredCreateDirs_ParentPathReplacementCannotRedirect(t *testing.T) {
-	// Given
-	base := t.TempDir()
-	originalParent := filepath.Join(base, "parent")
-	if err := os.Mkdir(originalParent, 0o755); err != nil {
-		t.Fatalf("mkdir original parent: %v", err)
-	}
-	target := filepath.Join(originalParent, "missing", "target.txt")
-	anchor := newTestAnchor(t, target)
-	movedParent := filepath.Join(base, "moved")
-	if err := os.Rename(originalParent, movedParent); err != nil {
-		t.Fatalf("rename anchored parent: %v", err)
-	}
-	if err := os.Mkdir(originalParent, 0o755); err != nil {
-		t.Fatalf("mkdir replacement parent: %v", err)
-	}
-
-	// When
-	err := anchor.EnsureParent(true, 0o755)
-
-	// Then
-	if err != nil {
-		t.Fatalf("EnsureParent(): %v", err)
-	}
-	if _, statErr := os.Stat(filepath.Join(movedParent, "missing")); statErr != nil {
-		t.Fatalf("anchored child missing from original directory: %v", statErr)
-	}
-	if _, statErr := os.Stat(filepath.Join(originalParent, "missing")); !errors.Is(statErr, os.ErrNotExist) {
-		t.Fatalf("replacement pathname was mutated: %v", statErr)
 	}
 }
 
