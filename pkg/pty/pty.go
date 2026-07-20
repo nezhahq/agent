@@ -86,8 +86,5 @@ func (pty *Pty) killChildProcess(c *exec.Cmd) error {
 }
 
 func (pty *Pty) Close() error {
-	if err := pty.tty.Close(); err != nil {
-		return err
-	}
-	return pty.killChildProcess(pty.cmd)
+	return errors.Join(pty.tty.Close(), pty.killChildProcess(pty.cmd))
 }
