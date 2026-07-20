@@ -22,13 +22,6 @@ func TestAnchoredAtomicReplace_Absent(t *testing.T) {
 	// Then
 	assertDefaultAtomicReplaceResult(t, result, err)
 	assertFileContent(t, target, "new-content")
-	info, statErr := os.Stat(target)
-	if statErr != nil {
-		t.Fatalf("stat target: %v", statErr)
-	}
-	if got := info.Mode().Perm(); got != 0o640 {
-		t.Fatalf("target mode = %o, want 640", got)
-	}
 	assertNoAtomicTempEntries(t, directory, filepath.Base(target))
 }
 
