@@ -17,7 +17,7 @@ const finalOpenDeadline = 2 * time.Second
 func TestAnchoredClassify_identifies_unix_special_files(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := newUnixSocketDirectory(t)
 	fifoPath := filepath.Join(root, "fifo")
 	socketPath := filepath.Join(root, "socket")
 	symlinkPath := filepath.Join(root, "symlink")
@@ -70,7 +70,7 @@ func TestAnchoredClassify_identifies_unix_special_files(t *testing.T) {
 func TestAnchoredRejectsFinal_special_targets_boundedly(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
+	root := newUnixSocketDirectory(t)
 	regularPath := filepath.Join(root, "regular")
 	fifoPath := filepath.Join(root, "fifo")
 	socketPath := filepath.Join(root, "socket")
@@ -121,4 +121,18 @@ func TestAnchoredRejectsFinal_special_targets_boundedly(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newUnixSocketDirectory(t *testing.T) string {
+	t.Helper()
+
+	root, err := os.MkdirTemp("/tmp", "hostfs-")
+	if err != nil {
+		t.Fatalf("create short Unix socket directory: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	if len([]byte(filepath.Join(root, "socket"))) > 103 {
+		t.Fatalf("Unix socket path length = %d, want at most 103", len([]byte(filepath.Join(root, "socket"))))
+	}
+	return root
 }
