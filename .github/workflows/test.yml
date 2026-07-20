@@ -78,7 +78,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           repository: nezhahq/nezha
-          ref: 5d7fef640873d2bb8c3e763c194e7b281b3c9e75
+          ref: 8b352484d82266a8401dbaf04b6dd98b6e7f8e00
           path: nezha
           persist-credentials: false
       - name: Set up Go
@@ -86,6 +86,14 @@ jobs:
         with:
           go-version: ^1.26.1
           cache: false
+      - name: Prepare Dashboard build inputs
+        working-directory: nezha
+        run: |
+          go install github.com/swaggo/swag/cmd/swag@v1.16.6
+          mkdir -p cmd/dashboard/user-dist cmd/dashboard/admin-dist
+          printf 'placeholder\n' > cmd/dashboard/user-dist/placeholder.txt
+          printf 'placeholder\n' > cmd/dashboard/admin-dist/placeholder.txt
+          swag init --pd -d cmd/dashboard -g main.go -o cmd/dashboard/docs
       - name: Require Agent workflow policy tests
         working-directory: nezha
         run: |
