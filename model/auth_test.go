@@ -2,201 +2,136 @@ package model
 
 import (
 	"context"
-	"sync/atomic"
+	"sync"
 	"testing"
 )
 
-// AuthHandler reads the credentials on every gRPC call via the closures, not
-// once at construction. The dashboard rotates ClientSecret during a server
-// transfer; if the agent cached the credential at startup, the next reconnect
-// would still present the old secret and never succeed.
-func TestAuthHandlerReadsCredentialsPerCall(t *testing.T) {
-	secret := "old-secret"
-	uuid := "agent-uuid"
+func TestAuthHandlerCapturesImmutableConnectionCredentials(t *testing.T) {
+	// Given
+	secret := "secret-a"
+	uuid := "uuid-a"
+	auth := NewAuthHandler(secret, uuid, false)
 
-	a := &AuthHandler{
-		Credentials: func() (string, string) { return secret, uuid },
-	}
+	// When
+	secret = "secret-b"
+	uuid = "uuid-b"
+	metadata, err := auth.GetRequestMetadata(context.Background())
 
-	md, err := a.GetRequestMetadata(context.Background())
+	// Then
 	if err != nil {
-		t.Fatalf("first call: %v", err)
+		t.Fatalf("GetRequestMetadata: %v", err)
 	}
-	if md["client_secret"] != "old-secret" {
-		t.Fatalf("expected old-secret, got %q", md["client_secret"])
+	if metadata["client-secret"] != "secret-a" || metadata["client-uuid"] != "uuid-a" {
+		t.Fatalf("connection-scoped credentials changed after construction: %v", metadata)
 	}
-	if md["client-secret"] != "old-secret" {
-		t.Fatalf("expected old-secret in hyphenated metadata, got %q", md["client-secret"])
-	}
-
-	// Rotate the credential the way handleApplyConfigTask's reload would after
-	// the save-then-swap completes.
-	secret = "new-secret"
-
-	md, err = a.GetRequestMetadata(context.Background())
-	if err != nil {
-		t.Fatalf("second call: %v", err)
-	}
-	if md["client_secret"] != "new-secret" {
-		t.Fatalf("AuthHandler must read the closure on every call to pick up rotation, got %q", md["client_secret"])
-	}
-	if md["client-secret"] != "new-secret" {
-		t.Fatalf("AuthHandler must update hyphenated metadata on every call, got %q", md["client-secret"])
-	}
-}
-
-// TestAuthHandlerCoherentCredentialPair pins the invariant that one
-// GetRequestMetadata call returns a (secret, uuid) pair from a single snapshot.
-// Splitting the read across two separate snapshot loads (as the old AuthHandler
-// did) can hand the dashboard a mixed (oldUUID, newSecret) pair during a
-// transfer rotation, causing authentication failures.
-func TestAuthHandlerCoherentCredentialPair(t *testing.T) {
-	// Use a single atomic that flips both fields together so a torn read is
-	// directly observable as a mismatch.
-	type pair struct {
-		secret string
-		uuid   string
-	}
-	current := &atomic.Pointer[pair]{}
-	current.Store(&pair{secret: "secret-A", uuid: "uuid-A"})
-
-	a := &AuthHandler{
-		Credentials: func() (string, string) {
-			p := current.Load()
-			return p.secret, p.uuid
-		},
-	}
-
-	stop := make(chan struct{})
-	defer close(stop)
-	go func() {
-		flip := false
-		for {
-			select {
-			case <-stop:
-				return
-			default:
-			}
-			if flip {
-				current.Store(&pair{secret: "secret-A", uuid: "uuid-A"})
-			} else {
-				current.Store(&pair{secret: "secret-B", uuid: "uuid-B"})
-			}
-			flip = !flip
-		}
-	}()
-
-	for i := 0; i < 100000; i++ {
-		md, err := a.GetRequestMetadata(context.Background())
-		if err != nil {
-			t.Fatalf("GetRequestMetadata: %v", err)
-		}
-		s, u := md["client-secret"], md["client-uuid"]
-		if (s == "secret-A" && u != "uuid-A") || (s == "secret-B" && u != "uuid-B") {
-			t.Fatalf("torn credential pair: secret=%q uuid=%q (must come from a single snapshot)", s, u)
-		}
+	if auth.RequireTransportSecurity() {
+		t.Fatal("connection-scoped TLS policy changed after construction")
 	}
 }
 
 func TestAuthHandlerEmitsLegacyAndHyphenatedMetadata(t *testing.T) {
-	a := &AuthHandler{
-		Credentials: func() (string, string) { return "secret", "uuid" },
-	}
+	// Given
+	auth := NewAuthHandler("secret", "uuid", true)
 
-	md, err := a.GetRequestMetadata(context.Background())
+	// When
+	metadata, err := auth.GetRequestMetadata(context.Background())
+
+	// Then
 	if err != nil {
 		t.Fatalf("GetRequestMetadata: %v", err)
 	}
-
 	for _, key := range []string{"client-secret", "client_secret"} {
-		if md[key] != "secret" {
-			t.Fatalf("%s = %q, want secret", key, md[key])
+		if metadata[key] != "secret" {
+			t.Fatalf("%s = %q, want secret", key, metadata[key])
 		}
 	}
 	for _, key := range []string{"client-uuid", "client_uuid"} {
-		if md[key] != "uuid" {
-			t.Fatalf("%s = %q, want uuid", key, md[key])
+		if metadata[key] != "uuid" {
+			t.Fatalf("%s = %q, want uuid", key, metadata[key])
 		}
 	}
+	if !auth.RequireTransportSecurity() {
+		t.Fatal("TLS-enabled connection must require transport security")
+	}
 }
 
-// AuthHandler.GetRequestMetadata must not panic on a zero-value or
-// nil-Credentials handler. A panic inside grpc-go's metadata callback
-// would propagate up the dial stack and crash the unattended agent
-// process, masking the misconfiguration as a generic runtime failure.
 func TestAuthHandlerGetRequestMetadataNilSafe(t *testing.T) {
+	// Given
 	var nilHandler *AuthHandler
+	zero := &AuthHandler{}
+
+	// When / Then
 	if _, err := nilHandler.GetRequestMetadata(context.Background()); err == nil {
-		t.Fatal("nil receiver must return an error, not nil")
+		t.Fatal("nil receiver must return an error, not panic")
 	}
-
-	zero := &AuthHandler{}
 	if _, err := zero.GetRequestMetadata(context.Background()); err == nil {
-		t.Fatal("zero-value AuthHandler (no Credentials closure) must return an error, not panic")
+		t.Fatal("zero-value AuthHandler must return an error, not panic")
 	}
 }
 
-// RequireTransportSecurity must track the live RequireTLS closure so a
-// TLS-enabled agent refuses to send client_secret over a cleartext gRPC
-// channel, while a plaintext intranet agent (RequireTLS -> false) keeps
-// connecting. This is the core of the NEZHA-AGENT-001 fix: gate credential
-// disclosure on the transport without breaking TLS:false deployments.
-func TestAuthHandlerRequireTransportSecurityTracksConfig(t *testing.T) {
-	tlsEnabled := false
-	a := &AuthHandler{
-		RequireTLS: func() bool { return tlsEnabled },
-	}
-
-	if a.RequireTransportSecurity() {
-		t.Fatal("TLS:false agent must allow plaintext transport, else intranet deployments break")
-	}
-
-	tlsEnabled = true
-	if !a.RequireTransportSecurity() {
-		t.Fatal("TLS:true agent must require transport security to avoid leaking credentials over cleartext")
-	}
-
-	tlsEnabled = false
-	if a.RequireTransportSecurity() {
-		t.Fatal("RequireTransportSecurity must re-read the closure on every call to follow a live config reload")
-	}
-}
-
-// Intranet baseline: a plaintext agent (TLS:false) must both be allowed onto
-// the cleartext transport AND still hand its credentials to the dashboard, so
-// the everyday LAN/VPC deployment keeps authenticating exactly as before the
-// fix. This guards against a regression where requiring TLS (or dropping the
-// credentials) would silently break intranet users.
 func TestAuthHandlerIntranetPlaintextStillAuthenticates(t *testing.T) {
-	a := &AuthHandler{
-		Credentials: func() (string, string) { return "intranet-secret", "intranet-uuid" },
-		RequireTLS:  func() bool { return false },
-	}
+	// Given
+	auth := NewAuthHandler("intranet-secret", "intranet-uuid", false)
 
-	if a.RequireTransportSecurity() {
-		t.Fatal("intranet agent (TLS:false) must be allowed on a plaintext transport")
-	}
+	// When
+	metadata, err := auth.GetRequestMetadata(context.Background())
 
-	md, err := a.GetRequestMetadata(context.Background())
+	// Then
 	if err != nil {
-		t.Fatalf("intranet agent must still produce credentials, got %v", err)
+		t.Fatalf("intranet agent must produce credentials: %v", err)
 	}
-	if md["client_secret"] != "intranet-secret" || md["client_uuid"] != "intranet-uuid" {
-		t.Fatalf("intranet agent must send its real credentials, got %v", md)
+	if auth.RequireTransportSecurity() {
+		t.Fatal("TLS:false intranet connection must allow plaintext transport")
+	}
+	if metadata["client_secret"] != "intranet-secret" || metadata["client_uuid"] != "intranet-uuid" {
+		t.Fatalf("intranet connection must send its captured credentials: %v", metadata)
 	}
 }
 
-// A nil receiver or an AuthHandler constructed without RequireTLS must not
-// panic and must default to "do not require TLS" (legacy behaviour), so
-// existing call sites and grpc-go's transport check stay safe.
-func TestAuthHandlerRequireTransportSecurityNilSafe(t *testing.T) {
-	var nilHandler *AuthHandler
-	if nilHandler.RequireTransportSecurity() {
-		t.Fatal("nil receiver must return false, not panic or require TLS")
-	}
+func TestAuthHandlerConcurrentReadsRemainImmutable(t *testing.T) {
+	// Given
+	auth := NewAuthHandler("secret-a", "uuid-a", true)
+	const readers = 16
+	const rounds = 1000
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(readers)
 
+	// When
+	for range readers {
+		go func() {
+			defer waitGroup.Done()
+			for range rounds {
+				metadata, err := auth.GetRequestMetadata(context.Background())
+				if err != nil {
+					t.Errorf("GetRequestMetadata: %v", err)
+					return
+				}
+				if metadata["client-secret"] != "secret-a" || metadata["client-uuid"] != "uuid-a" || !auth.RequireTransportSecurity() {
+					t.Errorf("immutable handler changed: metadata=%v requireTLS=%v", metadata, auth.RequireTransportSecurity())
+					return
+				}
+			}
+		}()
+	}
+	waitGroup.Wait()
+
+	// Then
+	metadata, err := auth.GetRequestMetadata(context.Background())
+	if err != nil || metadata["client-secret"] != "secret-a" || metadata["client-uuid"] != "uuid-a" {
+		t.Fatalf("final immutable metadata mismatch: metadata=%v err=%v", metadata, err)
+	}
+}
+
+func TestAuthHandlerRequireTransportSecurityNilSafe(t *testing.T) {
+	// Given
+	var nilHandler *AuthHandler
 	zero := &AuthHandler{}
+
+	// When / Then
+	if nilHandler.RequireTransportSecurity() {
+		t.Fatal("nil receiver must not require TLS")
+	}
 	if zero.RequireTransportSecurity() {
-		t.Fatal("AuthHandler without RequireTLS closure must default to false (legacy plaintext-allowed behaviour)")
+		t.Fatal("zero-value handler must preserve plaintext-compatible behavior")
 	}
 }

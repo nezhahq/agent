@@ -3,8 +3,10 @@ package model
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -47,6 +49,15 @@ type AgentConfig struct {
 
 	k        *koanf.Koanf `json:"-"`
 	filePath string       `json:"-"`
+}
+
+func (c AgentConfig) Clone() AgentConfig {
+	cloned := c
+	cloned.HardDrivePartitionAllowlist = slices.Clone(c.HardDrivePartitionAllowlist)
+	cloned.NICAllowlist = maps.Clone(c.NICAllowlist)
+	cloned.DNS = slices.Clone(c.DNS)
+	cloned.CustomIPApi = slices.Clone(c.CustomIPApi)
+	return cloned
 }
 
 // Read 从给定的文件目录加载配置文件

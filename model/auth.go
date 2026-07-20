@@ -5,45 +5,37 @@ import (
 	"errors"
 )
 
-// AuthHandler attaches the agent's identity to every outbound gRPC call.
-// Credentials is a single closure returning a coherent (secret, uuid) pair so
-// a dashboard-initiated rotation (server transfer / ownership swap) cannot be
-// observed mid-swap as a torn (oldUUID, newSecret) pair. Each gRPC dial calls
-// Credentials once; a save-first-then-publish reload in the agent is enough
-// to switch credentials atomically.
 type AuthHandler struct {
-	Credentials func() (secret, uuid string)
-	// RequireTLS reports whether the agent's transport must be encrypted, read
-	// from the live agent config so plaintext intranet deployments (TLS:false)
-	// keep working while TLS-enabled agents refuse to leak credentials over a
-	// cleartext channel. nil means "do not require TLS" (legacy behaviour).
-	RequireTLS func() bool
+	clientSecret             string
+	clientUUID               string
+	requireTransportSecurity bool
 }
 
-// ErrAuthCredentialsNotConfigured surfaces from gRPC dial metadata when an
-// AuthHandler has been constructed without a Credentials closure (e.g. zero
-// value, or a refactor that forgot to wire publishCredentials). Returning an
-// error instead of panicking keeps the gRPC client loop alive so the
-// supervisor can log and retry — a nil dereference would crash the agent
-// process and cause unattended hosts to flap.
-var ErrAuthCredentialsNotConfigured = errors.New("agent: AuthHandler.Credentials closure is not configured")
+var ErrAuthCredentialsNotConfigured = errors.New("agent: AuthHandler credentials are not configured")
+
+func NewAuthHandler(clientSecret, clientUUID string, requireTransportSecurity bool) *AuthHandler {
+	return &AuthHandler{
+		clientSecret:             clientSecret,
+		clientUUID:               clientUUID,
+		requireTransportSecurity: requireTransportSecurity,
+	}
+}
 
 func (a *AuthHandler) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
-	if a == nil || a.Credentials == nil {
+	if a == nil || a.clientSecret == "" || a.clientUUID == "" {
 		return nil, ErrAuthCredentialsNotConfigured
 	}
-	secret, uuid := a.Credentials()
 	return map[string]string{
-		"client-secret": secret,
-		"client-uuid":   uuid,
-		"client_secret": secret,
-		"client_uuid":   uuid,
+		"client-secret": a.clientSecret,
+		"client-uuid":   a.clientUUID,
+		"client_secret": a.clientSecret,
+		"client_uuid":   a.clientUUID,
 	}, nil
 }
 
 func (a *AuthHandler) RequireTransportSecurity() bool {
-	if a == nil || a.RequireTLS == nil {
+	if a == nil {
 		return false
 	}
-	return a.RequireTLS()
+	return a.requireTransportSecurity
 }
