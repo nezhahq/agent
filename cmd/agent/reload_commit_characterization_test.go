@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -122,10 +123,13 @@ func TestPreRunCharacterizationPublishesValidatedStartupConfig(t *testing.T) {
 	// Given
 	originalConfig := agentConfig
 	originalSnapshot := runtimeConfigSnapshot.Load()
+	originalArch := arch
 	t.Cleanup(func() {
 		agentConfig = originalConfig
 		runtimeConfigSnapshot.Store(originalSnapshot)
+		arch = originalArch
 	})
+	arch = runtime.GOARCH
 	configPath := filepath.Join(t.TempDir(), "config.yml")
 	if err := os.WriteFile(configPath, []byte("server: startup.example:5555\nclient_secret: startup-secret\nuuid: 00000000-0000-0000-0000-00000000000a\ntls: true\ninsecure_tls: true\n"), 0o600); err != nil {
 		t.Fatalf("seed startup config: %v", err)
