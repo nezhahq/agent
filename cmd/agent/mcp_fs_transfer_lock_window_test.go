@@ -16,10 +16,10 @@ import (
 // network receive window.
 type blockingRecvStream struct {
 	pb.NezhaService_IOStreamClient
-	release  chan struct{}
-	recvHit  chan struct{}
-	payload  []byte
-	served   bool
+	release chan struct{}
+	recvHit chan struct{}
+	payload []byte
+	served  bool
 }
 
 func (s *blockingRecvStream) Send(*pb.IOStreamData) error { return nil }

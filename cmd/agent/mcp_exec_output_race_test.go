@@ -3,12 +3,10 @@
 package main
 
 import (
-	"encoding/json"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/nezhahq/agent/model"
-	pb "github.com/nezhahq/agent/proto"
 )
 
 // The stdout/stderr buffers are filled by background io.Copy goroutines.
@@ -18,32 +16,22 @@ import (
 // grandchild keeps the stdout pipe open, so the copy goroutine is still
 // blocked in Write/Read when the bounded "best-effort" drain gives up and
 // the main goroutine reads the buffer. We reproduce exactly that — a
-// daemonized child streaming output past a 1s deadline — and run under
-// -race so the concurrent buffer access is flagged deterministically.
+// daemonized child streaming output past a 1s deadline — and run under -race
+// so concurrent buffer access is flagged while the helper PID proves cleanup.
 func TestHandleExecTask_TimeoutOutputReadIsRaceFree(t *testing.T) {
-	req := model.ExecRequest{
-		Cmd: "sh",
-		Args: []string{"-c",
-			"setsid sh -c 'while :; do echo spam; done >&1' & sleep 30",
-		},
-		TimeoutSeconds: 1,
-		MaxOutputBytes: 1 << 20,
-	}
-	body, err := json.Marshal(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	task := &pb.Task{Data: string(body)}
-	result := &pb.TaskResult{}
-
-	handleExecTask(task, result)
-
-	var res model.ExecResult
-	if err := json.Unmarshal([]byte(result.GetData()), &res); err != nil {
-		t.Fatalf("invalid result payload: %v", err)
-	}
-	if !res.TimedOut {
+	pidFile := t.TempDir() + "/race-retained-pipe.pid"
+	result := executeOutputHelperWithMaxOutput(execOutputHelperTimeout, pidFile, 1, 1<<20)
+	if !result.TimedOut {
 		t.Fatal("TimedOut flag must be set when the deadline fires")
 	}
-	_ = strings.Count(res.Stdout, "spam")
+	_ = strings.Count(result.Stdout, "retained-output")
+	pidBytes, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("read race descendant pid: %v", err)
+	}
+	pid, err := strconv.Atoi(string(pidBytes))
+	if err != nil {
+		t.Fatalf("parse race descendant pid: %v", err)
+	}
+	awaitProcessExit(t, pid)
 }

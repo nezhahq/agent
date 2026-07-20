@@ -22,7 +22,7 @@ func TestHandleApplyConfigTaskRejectsWhenCommandExecuteDisabled(t *testing.T) {
 		clearReloadTimer()
 	}()
 
-	agentConfig = model.AgentConfig{DisableCommandExecute: true}
+	setTestRuntimeConfig(model.AgentConfig{DisableCommandExecute: true})
 
 	task := &pb.Task{Id: 42, Data: `{"client_secret":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}`}
 	result := &pb.TaskResult{}
@@ -52,7 +52,7 @@ func TestHandleApplyConfigTaskSupersedesPendingReload(t *testing.T) {
 		clearReloadTimer()
 	}()
 
-	agentConfig = model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true}
+	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true})
 
 	first := &pb.Task{Id: 1, Data: `{"client_secret":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}`}
 	firstResult := &pb.TaskResult{}
@@ -87,7 +87,7 @@ func TestHandleApplyConfigTaskPlainPushDoesNotSupersedeTransferReload(t *testing
 		clearReloadTimer()
 	}()
 
-	agentConfig = model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true}
+	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true})
 
 	transfer := &pb.Task{Id: 42, Data: `{"client_secret":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}`}
 	transferResult := &pb.TaskResult{}
@@ -131,7 +131,7 @@ func TestHandleApplyConfigTaskFailsOnInvalidPayload(t *testing.T) {
 		clearReloadTimer()
 	}()
 
-	agentConfig = model.AgentConfig{}
+	setTestRuntimeConfig(model.AgentConfig{})
 
 	task := &pb.Task{Id: 1, Data: `not-json`}
 	result := &pb.TaskResult{}
@@ -175,6 +175,7 @@ func TestApplyPendingReloadDoesNotBlockWithoutReader(t *testing.T) {
 	if err := agentConfig.Read(configPath); err != nil {
 		t.Fatal(err)
 	}
+	publishRuntimeConfig(agentConfig)
 	pendingConfig := agentConfig
 	pendingConfig.ClientSecret = "rotated"
 
@@ -215,7 +216,7 @@ func TestDispatchAgentTaskRunsApplyConfigSynchronously(t *testing.T) {
 		clearReloadTimer()
 	}()
 
-	agentConfig = model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true}
+	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true})
 
 	task := &pb.Task{Id: 1, Type: model.TaskTypeServerTransferApply, Data: `{"client_secret":"Abcdef0123456789ABCDEFGHIJklmnop"}`}
 	sentResults := make(chan *pb.TaskResult, 1)
@@ -277,12 +278,11 @@ func TestDispatchAgentTaskRunsNonApplyConfigAsync(t *testing.T) {
 	}
 }
 
-// applyPendingReload's commit (`agentConfig = cfg`) and handleApplyConfigTask's
-// baseline read (`tmpConfig := agentConfig`) must be serialized through
-// reloadMu. Otherwise a follow-up ApplyConfig that lands while
-// applyPendingReload is mid-commit captures the stale pre-rotation baseline
-// and silently overwrites the rotated client_secret on its own timer fire.
-// Under -race this surfaces as a data race on agentConfig.
+// applyPendingReload's commit and handleApplyConfigTask's post-lock
+// loadRuntimeConfig baseline must be serialized through reloadMu. Otherwise a
+// follow-up ApplyConfig that waits behind a commit can retain a stale
+// pre-rotation baseline and silently overwrite the rotated client_secret on
+// its own timer fire.
 func TestHandleApplyConfigTaskRaceFreeWithCommittingReload(t *testing.T) {
 	originalConfig := agentConfig
 	defer func() {
@@ -306,6 +306,7 @@ func TestHandleApplyConfigTaskRaceFreeWithCommittingReload(t *testing.T) {
 		if err := agentConfig.Read(configPath); err != nil {
 			t.Fatal(err)
 		}
+		publishRuntimeConfig(agentConfig)
 
 		active := time.AfterFunc(time.Hour, func() {})
 		reloadMu.Lock()
@@ -363,7 +364,7 @@ func TestHandleApplyConfigTaskRejectsMalformedClientSecret(t *testing.T) {
 				agentConfig = originalConfig
 				clearReloadTimer()
 			}()
-			agentConfig = model.AgentConfig{ClientSecret: "current-known-good-32-char-secretX", TLS: true}
+			setTestRuntimeConfig(model.AgentConfig{ClientSecret: "current-known-good-32-char-secretX", TLS: true})
 
 			task := &pb.Task{Id: 1, Data: tc.payload}
 			result := &pb.TaskResult{}
@@ -391,7 +392,7 @@ func TestHandleApplyConfigTaskAcceptsWellFormedClientSecret(t *testing.T) {
 		agentConfig = originalConfig
 		clearReloadTimer()
 	}()
-	agentConfig = model.AgentConfig{ClientSecret: "current-known-good-32-char-secretX", TLS: true}
+	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "current-known-good-32-char-secretX", TLS: true})
 
 	task := &pb.Task{Id: 1, Data: `{"client_secret":"AbcdEfghIjklMnopQrstUvwxYz012345"}`}
 	result := &pb.TaskResult{}
@@ -446,7 +447,7 @@ func TestHandleServerTransferApplyTaskRefusesRotationToInsecureTransport(t *test
 				agentConfig = originalConfig
 				clearReloadTimer()
 			}()
-			agentConfig = tc.current
+			setTestRuntimeConfig(tc.current)
 
 			task := &pb.Task{Id: 42, Data: tc.payload}
 			result := &pb.TaskResult{}
@@ -474,7 +475,7 @@ func TestHandleApplyConfigTaskAllowsNonRotationConfigOnInsecureTransport(t *test
 		agentConfig = originalConfig
 		clearReloadTimer()
 	}()
-	agentConfig = model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: false}
+	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: false})
 
 	task := &pb.Task{Id: 0, Data: `{"debug":true}`}
 	result := &pb.TaskResult{}
@@ -534,6 +535,7 @@ func TestApplyPendingReloadWritesToConfigReadPath(t *testing.T) {
 
 	agentConfig = model.AgentConfig{}
 	require(agentConfig.Read(configPath))
+	publishRuntimeConfig(agentConfig)
 	if agentConfig.ClientSecret != "original" {
 		t.Fatalf("precondition: agentConfig.ClientSecret = %q, want %q", agentConfig.ClientSecret, "original")
 	}

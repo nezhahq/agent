@@ -25,7 +25,9 @@ const fsPathLockStripes = 1024
 // defend against non-MCP writers; callers must layer a platform-level file
 // lock for that, documented at the fs.write / fs.transfer upload sites.
 type fsPathLocker struct {
-	stripes [fsPathLockStripes]sync.Mutex
+	stripes                 [fsPathLockStripes]sync.Mutex
+	beforeStripeLockForTest func(*sync.Mutex)
+	afterStripeLockForTest  func()
 }
 
 func newFsPathLocker() *fsPathLocker {
@@ -54,7 +56,14 @@ func (l *fsPathLocker) stripe(path string) *sync.Mutex {
 // `defer unlock()` after early-return branches.
 func (l *fsPathLocker) lock(path string) func() {
 	pm := l.stripe(path)
+	// The test seam stops only at this production stripe-mutex acquisition.
+	if l.beforeStripeLockForTest != nil {
+		l.beforeStripeLockForTest(pm)
+	}
 	pm.Lock()
+	if l.afterStripeLockForTest != nil {
+		l.afterStripeLockForTest()
+	}
 	var once sync.Once
 	return func() {
 		once.Do(func() { pm.Unlock() })

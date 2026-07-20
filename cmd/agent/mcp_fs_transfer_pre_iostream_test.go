@@ -32,7 +32,7 @@ func TestDecideFsTransferEarlyError_DisableCommandExecute(t *testing.T) {
 		Path:     "/tmp/x",
 	})}
 
-	req, msg, hasStream := decideFsTransferEarlyError(cfg, task)
+	req, msg, hasStream := decideFsTransferEarlyError(cfg.DisableCommandExecute, task)
 	if msg == "" {
 		t.Fatal("DisableCommandExecute must produce an early error message")
 	}
@@ -53,7 +53,7 @@ func TestDecideFsTransferEarlyError_BadJSON(t *testing.T) {
 	cfg := model.AgentConfig{}
 	task := &pb.Task{Data: "{not-json"}
 
-	req, msg, hasStream := decideFsTransferEarlyError(cfg, task)
+	req, msg, hasStream := decideFsTransferEarlyError(cfg.DisableCommandExecute, task)
 	if msg == "" {
 		t.Fatal("malformed JSON must produce an early error message")
 	}
@@ -73,7 +73,7 @@ func TestDecideFsTransferEarlyError_MissingStreamID(t *testing.T) {
 		Path:     "/tmp/x",
 	})}
 
-	req, msg, hasStream := decideFsTransferEarlyError(cfg, task)
+	req, msg, hasStream := decideFsTransferEarlyError(cfg.DisableCommandExecute, task)
 	if msg == "" {
 		t.Fatal("missing stream_id must produce an early error message")
 	}
@@ -93,7 +93,7 @@ func TestDecideFsTransferEarlyError_MissingPath(t *testing.T) {
 		Path:     "",
 	})}
 
-	req, msg, hasStream := decideFsTransferEarlyError(cfg, task)
+	req, msg, hasStream := decideFsTransferEarlyError(cfg.DisableCommandExecute, task)
 	if msg == "" {
 		t.Fatal("missing path must produce an early error message")
 	}
@@ -113,7 +113,7 @@ func TestDecideFsTransferEarlyError_UnknownOp(t *testing.T) {
 		Path:     "/tmp/x",
 	})}
 
-	req, msg, hasStream := decideFsTransferEarlyError(cfg, task)
+	req, msg, hasStream := decideFsTransferEarlyError(cfg.DisableCommandExecute, task)
 	if msg == "" {
 		t.Fatal("unknown op must be flagged at the pre-IOStream stage")
 	}
@@ -133,7 +133,7 @@ func TestDecideFsTransferEarlyError_HappyPathNoError(t *testing.T) {
 		Path:     "/tmp/file",
 	})}
 
-	req, msg, hasStream := decideFsTransferEarlyError(cfg, task)
+	req, msg, hasStream := decideFsTransferEarlyError(cfg.DisableCommandExecute, task)
 	if msg != "" {
 		t.Fatalf("happy path must not produce an early error; got %q", msg)
 	}

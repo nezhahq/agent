@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,18 +28,14 @@ import (
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/nezhahq/agent/cmd/agent/commands"
 	"github.com/nezhahq/agent/model"
-	fm "github.com/nezhahq/agent/pkg/fm"
 	"github.com/nezhahq/agent/pkg/fsnotifyx"
 	"github.com/nezhahq/agent/pkg/logger"
 	"github.com/nezhahq/agent/pkg/monitor"
 	"github.com/nezhahq/agent/pkg/processgroup"
-	"github.com/nezhahq/agent/pkg/pty"
 	"github.com/nezhahq/agent/pkg/util"
 	utlsx "github.com/nezhahq/agent/pkg/utls"
 	pb "github.com/nezhahq/agent/proto"
@@ -72,17 +67,6 @@ var (
 	reloadTimer      *time.Timer
 	reloadIsTransfer bool
 
-	// liveCredentials holds an atomic snapshot of (ClientSecret, ClientUUID)
-	// that the gRPC AuthHandler closure reads on every dial. We can't have the
-	// closure read agentConfig.ClientSecret directly: applyPendingReload swaps
-	// agentConfig with `agentConfig = cfg` (a multi-field struct assignment),
-	// strings are two-word headers (pointer + length), and concurrent
-	// GetRequestMetadata calls from inflight gRPC ops would observe torn reads
-	// — at best the dashboard rejects the auth, at worst a torn string header
-	// dereferences foreign memory. Publishing through atomic.Pointer gives the
-	// auth path a coherent (secret, uuid) pair without taking a lock per call.
-	liveCredentials atomic.Pointer[agentCredentials]
-
 	dnsResolver = &net.Resolver{PreferGo: true}
 	httpClient  = &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -91,7 +75,7 @@ var (
 		Timeout: time.Second * 30,
 	}
 
-	reloadSigChan = make(chan struct{})
+	reloadSigChan = make(chan struct{}, 1)
 )
 
 var (
@@ -101,7 +85,6 @@ var (
 
 const (
 	delayWhenError = time.Second * 10 // Agent 重连间隔
-	networkTimeOut = time.Second * 5  // 普通网络超时
 
 	minUpdateInterval = 1440
 	maxUpdateInterval = 2880
@@ -109,53 +92,18 @@ const (
 	binaryName = "nezha-agent"
 )
 
-// agentCredentials is the atomic-snapshot type behind liveCredentials. We keep
-// it deliberately narrow — only the fields the gRPC AuthHandler reads — so
-// the rest of agentConfig (DNS, ReportDelay, debug toggles, ...) can keep
-// being read directly. Auth is the path where torn reads turn into
-// connection-level rejections or panics; other paths only see eventual
-// consistency.
-type agentCredentials struct {
-	ClientSecret string
-	ClientUUID   string
-}
-
-// publishCredentials atomically snapshots the credentials so concurrent
-// AuthHandler reads observe a coherent (secret, uuid) pair. Call this at
-// startup right after agentConfig.Read populates the on-disk values, and on
-// every applyPendingReload right before the in-process swap.
-func publishCredentials(cfg model.AgentConfig) {
-	liveCredentials.Store(&agentCredentials{
-		ClientSecret: cfg.ClientSecret,
-		ClientUUID:   cfg.UUID,
-	})
-}
-
-// loadCredentials returns the latest published snapshot, or a zero value if
-// publishCredentials hasn't been called yet. The AuthHandler closure uses
-// the zero fallback rather than a nil panic so an early reconnect during
-// startup degrades to "unauthenticated" instead of crashing the agent.
-func loadCredentials() agentCredentials {
-	if c := liveCredentials.Load(); c != nil {
-		return *c
-	}
-	return agentCredentials{}
-}
-
 func setEnv() {
 	resolver.SetDefaultScheme("passthrough")
 	net.DefaultResolver.PreferGo = true // 使用 Go 内置的 DNS 解析器解析域名
 	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		config := loadRuntimeConfig()
+		dnsConfig := dnsConfigTupleFrom(config)
 		d := net.Dialer{
 			Timeout: time.Second * 5,
 		}
-		dnsServers := util.DNSServersAll
-		if len(agentConfig.DNS) > 0 {
-			dnsServers = agentConfig.DNS
-		}
 		var conn net.Conn
 		var err error
-		for _, server := range util.RangeRnd(dnsServers) {
+		for _, server := range util.RangeRnd(dnsConfig.servers) {
 			conn, err = d.DialContext(ctx, "udp", server)
 			if err == nil {
 				return conn, nil
@@ -210,9 +158,7 @@ func preRun(configPath string) error {
 	if err := agentConfig.Read(configPath); err != nil {
 		return fmt.Errorf("init config failed: %v", err)
 	}
-
-	monitor.InitConfig(&agentConfig)
-	monitor.CustomEndpoints = agentConfig.CustomIPApi
+	publishRuntimeConfig(agentConfig)
 
 	return nil
 }
@@ -283,41 +229,21 @@ func main() {
 }
 
 func run() {
-	// 把启动时 agentConfig 里的 credential 发布到 atomic 快照里 — 后续 reload
-	// 也会重新 publish，AuthHandler 闭包只读这个快照而不再裸读 agentConfig。
-	// 这是 applyPendingReload 与 gRPC 鉴权路径的并发协议起点。
-	publishCredentials(agentConfig)
-
-	// Read credentials at call time so a mid-session secret rotation (server
-	// transfer) flows into the next reconnect without rebuilding AuthHandler.
-	// 注意：闭包必须读 liveCredentials 快照，不能裸读 agentConfig.ClientSecret
-	// — 后者会与 applyPendingReload 的 `agentConfig = cfg` 结构体赋值形成
-	// data race（string 是两个 word，整体写不是原子的），TestAuthCredentialPublishConcurrentWithReadIsRaceFree
-	// 在 -race 下钉死该不变量。
-	auth := model.AuthHandler{
-		Credentials: func() (string, string) {
-			c := loadCredentials()
-			return c.ClientSecret, c.ClientUUID
-		},
-		RequireTLS: func() bool {
-			return agentConfig.TLS
-		},
-	}
-
+	startupConfig := startupConfigViewFrom(loadRuntimeConfig())
 	// 定时检查更新
-	if _, err := semver.Parse(version); err == nil && !agentConfig.DisableAutoUpdate {
-		if doSelfUpdate(true) {
+	if _, err := semver.Parse(version); err == nil && !startupConfig.disableAutoUpdate {
+		if doSelfUpdate(updateConfigTupleFrom(loadRuntimeConfig()), true) {
 			os.Exit(1)
 		}
 		go func() {
 			var interval time.Duration
-			if agentConfig.SelfUpdatePeriod > 0 {
-				interval = time.Duration(agentConfig.SelfUpdatePeriod) * time.Minute
+			if startupConfig.selfUpdatePeriod > 0 {
+				interval = time.Duration(startupConfig.selfUpdatePeriod) * time.Minute
 			} else {
 				interval = time.Duration(rand.Intn(maxUpdateInterval-minUpdateInterval)+minUpdateInterval) * time.Minute
 			}
 			for range time.Tick(interval) {
-				if doSelfUpdate(true) {
+				if doSelfUpdate(updateConfigTupleFrom(loadRuntimeConfig()), true) {
 					os.Exit(1)
 				}
 			}
@@ -338,31 +264,29 @@ func run() {
 	}
 
 	for {
-		var securityOption grpc.DialOption
-		if agentConfig.TLS {
-			if agentConfig.InsecureTLS {
-				securityOption = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true}))
-			} else {
-				securityOption = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}))
-			}
-		} else {
-			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
-		}
-		conn, err = grpc.NewClient(agentConfig.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
+		connectionConfig := loadConnectionConfigTuple()
+		conn, err = grpc.NewClient(connectionConfig.Server, connectionConfig.dialOptions()...)
 		if err != nil {
 			printf("与面板建立连接失败: %v", err)
 			retry()
 			continue
 		}
 		client = pb.NewNezhaServiceClient(conn)
-		printf("Connection to %s established", agentConfig.Server)
+		printf("Connection to %s established", connectionConfig.Server)
+		session := newConnectionSession(context.Background())
+		reconnectSession := func(cause error) {
+			graceContext, cancelGrace := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancelGrace()
+			reconnectAfterSessionExit(session, sessionShutdown{graceContext: graceContext, cause: cause}, retry)
+		}
 
-		timeOutCtx, cancel := context.WithTimeout(context.Background(), networkTimeOut)
-		dashboardBootTimeReceipt, err = client.ReportSystemInfo2(timeOutCtx, monitor.GetHost().PB())
+		timeOutCtx, cancel := context.WithTimeout(session.streamContext, 10*time.Second)
+		config := loadRuntimeConfig()
+		dashboardBootTimeReceipt, err = client.ReportSystemInfo2(timeOutCtx, monitor.GetHost(config).PB())
 		if err != nil {
 			printf("上报系统信息失败: %v", err)
 			cancel()
-			retry()
+			reconnectSession(err)
 			continue
 		}
 		cancel()
@@ -371,44 +295,56 @@ func run() {
 		prevDashboardBootTime = dashboardBootTimeReceipt.GetData()
 		initialized = true
 
-		wCtx, wCancel := context.WithCancel(context.Background())
-
 		// 执行 Task
-		tasks, err := doWithTimeout(func() (pb.NezhaService_RequestTaskClient, error) {
-			return client.RequestTask(wCtx)
-		}, networkTimeOut)
+		tasks, err := client.RequestTask(session.requestTaskContext)
 		if err != nil {
 			printf("请求任务失败: %v", err)
-			wCancel()
-			retry()
+			reconnectSession(err)
 			continue
 		}
-		go receiveTasksDaemon(tasks, wCancel)
+		requestSession := session.bindRequestTask(tasks)
+		session.startDaemon(func() { receiveTasksDaemon(requestSession, session) })
 
-		reportState, err := doWithTimeout(func() (pb.NezhaService_ReportSystemStateClient, error) {
-			return client.ReportSystemState(wCtx)
-		}, networkTimeOut)
+		reportSession, err := openReportState(session, client)
 		if err != nil {
 			printf("上报状态信息失败: %v", err)
-			wCancel()
-			retry()
+			reconnectSession(err)
 			continue
 		}
-		go reportStateDaemon(reportState, wCancel)
+		session.startDaemon(func() { reportStateDaemon(reportSession, session.signalExit) })
 
+		shutdownCause := error(context.Canceled)
 		select {
 		case <-reloadSigChan:
 			println("Reloading...")
-			wCancel()
-		case <-wCtx.Done():
+		case <-session.streamContext.Done():
 			println("Worker exit...")
+			shutdownCause = context.Cause(session.streamContext)
+		case <-session.exitContext.Done():
+			println("Worker exit...")
+			shutdownCause = context.Cause(session.exitContext)
 		}
 
-		retry()
+		reconnectSession(shutdownCause)
 	}
 }
 
+func openReportState(
+	session *connectionSession,
+	reportClient pb.NezhaServiceClient,
+) (*reportStateSession, error) {
+	reportSession := session.newReportStateSession()
+	stream, err := reportClient.ReportSystemState(reportSession.streamContext)
+	if err != nil {
+		reportSession.cancelStream(err)
+		return nil, err
+	}
+	session.bindReportState(reportSession, stream)
+	return reportSession, nil
+}
+
 func runService(action string, path string) {
+	startupConfig := startupConfigViewFrom(loadRuntimeConfig())
 	winConfig := map[string]interface{}{
 		"OnFailure": "restart",
 	}
@@ -444,9 +380,9 @@ func runService(action string, path string) {
 	serviceLogger, err := logger.NewNezhaServiceLogger(s, nil)
 	if err != nil {
 		printf("获取 service logger 时出错: %+v", err)
-		logger.InitDefaultLogger(agentConfig.Debug, service.ConsoleLogger)
+		logger.InitDefaultLogger(startupConfig.debug, service.ConsoleLogger)
 	} else {
-		logger.InitDefaultLogger(agentConfig.Debug, serviceLogger)
+		logger.InitDefaultLogger(startupConfig.debug, serviceLogger)
 	}
 
 	if action == "install" {
@@ -471,176 +407,85 @@ func runService(action string, path string) {
 	}
 }
 
-// newSerialTaskResultSender wraps the RequestTask stream's Send with a mutex.
-// dispatchAgentTask runs most tasks in their own goroutine, and they all share
-// one stream; gRPC Go forbids concurrent SendMsg, so every result must funnel
-// through this serializer or overlapping MCP results corrupt the stream.
-func newSerialTaskResultSender(send func(*pb.TaskResult) error) func(*pb.TaskResult) error {
-	var mu sync.Mutex
-	return func(r *pb.TaskResult) error {
-		mu.Lock()
-		defer mu.Unlock()
-		return send(r)
-	}
-}
-
-func receiveTasksDaemon(tasks pb.NezhaService_RequestTaskClient, cancel context.CancelFunc) {
-	var task *pb.Task
-	var err error
-	send := newSerialTaskResultSender(tasks.Send)
-	for {
-		task, err = doWithTimeout(func() (*pb.Task, error) {
-			return tasks.Recv()
-		}, time.Second*30)
-		if err != nil {
-			printf("receiveTasks exit: %v", err)
-			cancel()
-			return
-		}
-		dispatchAgentTask(task, send, cancel)
-	}
-}
-
-// dispatchAgentTask 决定 task 的执行调度：
-//   - TaskTypeApplyConfig / TaskTypeServerTransferApply 必须在 receive 循环
-//     里同步处理 — dashboard 的取消流程依赖「最后到达的 ApplyConfig 在 10s
-//     重载窗口内 supersede 上一条」，原先对所有 task 一律 `go func(t)` 会让
-//     两个 goroutine 抢 reloadMu 的顺序与到达顺序无关，反向调度时 agent 会
-//     把已取消的 credential 写盘锁死自己。两个 handler 都很短（JSON 解析 +
-//     ValidateConfig + 装计时器），不会拖慢其它任务接收。
-//   - 其它 task（HTTPGet/Ping/Command/Terminal/NAT/FM/...）继续 goroutine 派
-//     发：它们可能跑很久或永远不返回（流式 terminal/fm），不能阻塞接收循环。
-func dispatchAgentTask(task *pb.Task, send func(*pb.TaskResult) error, cancel context.CancelFunc) {
-	switch task.GetType() {
-	case model.TaskTypeApplyConfig, model.TaskTypeServerTransferApply:
-		runAgentTask(task, send, cancel)
-		return
-	}
-	go runAgentTask(task, send, cancel)
-}
-
-func runAgentTask(task *pb.Task, send func(*pb.TaskResult) error, cancel context.CancelFunc) {
-	defer func() {
-		if err := recover(); err != nil {
-			println("task panic", task, err)
-		}
-	}()
-	result := doTask(task)
-	if result == nil {
-		return
-	}
-	if err := send(result); err != nil {
-		printf("send task result exit: %v", err)
-		cancel()
-	}
-}
-
-func doTask(task *pb.Task) *pb.TaskResult {
-	var result pb.TaskResult
-	result.Id = task.GetId()
-	result.Type = task.GetType()
-	switch task.GetType() {
-	case model.TaskTypeHTTPGet:
-		handleHttpGetTask(task, &result)
-	case model.TaskTypeICMPPing:
-		handleIcmpPingTask(task, &result)
-	case model.TaskTypeTCPPing:
-		handleTcpPingTask(task, &result)
-	case model.TaskTypeCommand:
-		handleCommandTask(task, &result)
-	case model.TaskTypeUpgrade:
-		handleUpgradeTask(task, &result)
-	case model.TaskTypeTerminalGRPC:
-		handleTerminalTask(task)
-		return nil
-	case model.TaskTypeNAT:
-		handleNATTask(task)
-		return nil
-	case model.TaskTypeFM:
-		handleFMTask(task)
-		return nil
-	case model.TaskTypeReportConfig:
-		handleReportConfigTask(&result)
-	case model.TaskTypeApplyConfig:
-		handleApplyConfigTask(task, &result)
-	case model.TaskTypeServerTransferApply:
-		handleServerTransferApplyTask(task, &result)
-	case model.TaskTypeExec:
-		handleExecTask(task, &result)
-	case model.TaskTypeFsList:
-		handleFsListTask(task, &result)
-	case model.TaskTypeFsRead:
-		handleFsReadTask(task, &result)
-	case model.TaskTypeFsWrite:
-		handleFsWriteTask(task, &result)
-	case model.TaskTypeFsDelete:
-		handleFsDeleteTask(task, &result)
-	case model.TaskTypeFsTransfer:
-		handleFsTransferTask(task)
-		return nil
-	case model.TaskTypeKeepalive:
-	default:
-		printf("不支持的任务: %v", task)
-		return nil
-	}
-	return &result
-}
-
 // reportStateDaemon 向server上报状态信息
-func reportStateDaemon(stateClient pb.NezhaService_ReportSystemStateClient, cancel context.CancelFunc) {
+func reportStateDaemon(stateClient *reportStateSession, requestExit func(error)) {
 	var err error
+	defer func() { stateClient.finishTerminal(err) }()
 	for {
-		lastReportHostInfo, lastReportIPInfo, err = reportState(stateClient, lastReportHostInfo, lastReportIPInfo)
+		config := loadRuntimeConfig()
+		reportConfig := reportConfigTupleFrom(config)
+		schedule, reportErr := reportState(stateClient, reportSchedule{host: lastReportHostInfo, ip: lastReportIPInfo}, reportConfig)
+		lastReportHostInfo, lastReportIPInfo, err = schedule.host, schedule.ip, reportErr
 		if err != nil {
 			printf("reportStateDaemon exit: %v", err)
-			cancel()
+			requestExit(err)
 			return
 		}
-		time.Sleep(time.Second * time.Duration(agentConfig.ReportDelay))
+		timer := time.NewTimer(time.Second * time.Duration(reportConfig.reportDelay))
+		select {
+		case <-timer.C:
+		case <-stateClient.cadenceContext.Done():
+			timer.Stop()
+			for {
+				_, err = stateClient.Recv()
+				if err != nil {
+					return
+				}
+			}
+		}
 	}
 }
 
-func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip time.Time) (time.Time, time.Time, error) {
+type reportStateClient interface {
+	Context() context.Context
+	Send(*pb.State) error
+	Recv() (*pb.Receipt, error)
+}
+
+func reportState(statClient reportStateClient, schedule reportSchedule, config reportConfigTuple) (reportSchedule, error) {
 	if statClient.Context().Err() != nil {
-		return host, ip, statClient.Context().Err()
+		return schedule, statClient.Context().Err()
 	}
 	if initialized {
-		monitor.TrackNetworkSpeed()
-		if _, err := doWithTimeout(func() (*pb.Receipt, error) {
-			return nil, statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB())
-		}, time.Second*10); err != nil {
-			return host, ip, err
+		reportMonitorDependencies.trackNetworkSpeed(config.snapshot)
+		if err := statClient.Send(reportMonitorDependencies.getState(config.snapshot, config.skipConnectionCount, config.skipProcsCount).PB()); err != nil {
+			return schedule, err
 		}
-		_, err := doWithTimeout(statClient.Recv, time.Second*10)
+		_, err := statClient.Recv()
 		if err != nil {
-			return host, ip, err
+			return schedule, err
 		}
 	}
 	// 每10分钟重新获取一次硬件信息
-	if host.Before(time.Now().Add(-10 * time.Minute)) {
-		if reportHost() {
-			host = time.Now()
+	if schedule.host.Before(time.Now().Add(-10 * time.Minute)) {
+		if reportHost(statClient.Context(), config.snapshot) {
+			schedule.host = time.Now()
 		}
 	}
 	// 更新IP信息
-	if time.Since(ip) > time.Second*time.Duration(agentConfig.IPReportPeriod) || !geoipReported {
-		if reportGeoIP(agentConfig.UseIPv6CountryCode, !geoipReported) {
-			ip = time.Now()
+	if time.Since(schedule.ip) > time.Second*time.Duration(config.ipReportPeriod) || !geoipReported {
+		if reportGeoIP(statClient.Context(), config.snapshot, geoIPReportOptions{
+			useIPv6CountryCode: config.useIPv6CountryCode,
+			forceUpdate:        !geoipReported,
+		}) {
+			schedule.ip = time.Now()
 			geoipReported = true
 		}
 	}
-	return host, ip, nil
+	return schedule, nil
 }
 
-func reportHost() bool {
+func reportHost(parent context.Context, config *model.AgentConfig) bool {
 	if !hostStatus.CompareAndSwap(false, true) {
 		return false
 	}
 	defer hostStatus.Store(false)
 	if client != nil && initialized {
-		receipt, err := doWithTimeout(func() (*pb.Uint64Receipt, error) {
-			return client.ReportSystemInfo2(context.Background(), monitor.GetHost().PB())
-		}, time.Second*10)
+		rpcContext, cancel := context.WithTimeout(parent, 10*time.Second)
+		defer cancel()
+		// The parent must reach the actual RPC; timing out only the caller orphans
+		// the underlying gRPC operation after the connection session is canceled.
+		receipt, err := client.ReportSystemInfo2(rpcContext, reportMonitorDependencies.getHost(config).PB())
 		if err != nil {
 			printf("ReportSystemInfo2 error: %v", err)
 			return false
@@ -650,7 +495,12 @@ func reportHost() bool {
 	return true
 }
 
-func reportGeoIP(use6, forceUpdate bool) bool {
+type geoIPReportOptions struct {
+	useIPv6CountryCode bool
+	forceUpdate        bool
+}
+
+func reportGeoIP(parent context.Context, config *model.AgentConfig, options geoIPReportOptions) bool {
 	if !ipStatus.CompareAndSwap(false, true) {
 		return false
 	}
@@ -660,32 +510,33 @@ func reportGeoIP(use6, forceUpdate bool) bool {
 		return false
 	}
 
-	pbg := monitor.FetchIP(use6)
+	pbg := reportMonitorDependencies.fetchIP(config, options.useIPv6CountryCode)
 	if pbg == nil {
 		return false
 	}
 
-	if !monitor.GeoQueryIPChanged && !forceUpdate {
+	if !reportMonitorDependencies.geoIPChanged() && !options.forceUpdate {
 		return true
 	}
 
-	geoip, err := doWithTimeout(func() (*pb.GeoIP, error) {
-		return client.ReportGeoIP(context.Background(), pbg)
-	}, time.Second*10)
+	rpcContext, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	// The parent must reach the actual RPC so session cancellation stops the
+	// network call instead of abandoning work behind a caller-only timeout.
+	geoip, err := client.ReportGeoIP(rpcContext, pbg)
 	if err != nil {
 		return false
 	}
 
 	prevDashboardBootTime = geoip.GetDashboardBootTime()
 
-	monitor.CachedCountryCode = geoip.GetCountryCode()
-	monitor.GeoQueryIPChanged = false
+	reportMonitorDependencies.markGeoIPReported(geoip.GetCountryCode())
 
 	return true
 }
 
 // doSelfUpdate 执行更新检查 如果更新成功则会结束进程
-func doSelfUpdate(useLocalVersion bool) (exit bool) {
+func doSelfUpdate(config updateConfigTuple, useLocalVersion bool) (exit bool) {
 	v := semver.MustParse("0.1.0")
 	if useLocalVersion {
 		vr, err := semver.Parse(version)
@@ -756,7 +607,7 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 	printf("检查更新: %v", v)
 	var latest *selfupdate.Release
 	switch {
-	case agentConfig.UseGiteeToUpgrade:
+	case config.useGiteeToUpgrade:
 		updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
 			BinaryName: binaryName,
 		})
@@ -765,7 +616,7 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 			return
 		}
 		latest, err = updater.UpdateSelf(v, "naibahq/agent")
-	case agentConfig.UseAtomGitToUpgrade:
+	case config.useAtomGitToUpgrade:
 		updater, erru := selfupdate.NewAtomGitUpdater(selfupdate.Config{
 			BinaryName: binaryName,
 		})
@@ -774,7 +625,7 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 			return
 		}
 		latest, err = updater.UpdateSelf(v, "naiba/nezha-agent")
-	case monitor.CachedCountryCode == "cn":
+	case monitor.CachedCountryCode() == "cn":
 		if rand.Intn(2) == 0 {
 			updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
 				BinaryName: binaryName,
@@ -817,17 +668,17 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 	return
 }
 
-func handleUpgradeTask(*pb.Task, *pb.TaskResult) {
-	if agentConfig.DisableForceUpdate {
+func handleUpgradeTaskWithConfig(config updateConfigTuple, gates taskFeatureGates) {
+	if gates.disableForceUpdate {
 		return
 	}
-	if doSelfUpdate(false) {
+	if doSelfUpdate(config, false) {
 		os.Exit(1)
 	}
 }
 
-func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
-	if agentConfig.DisableSendQuery {
+func handleTcpPingTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *pb.TaskResult) {
+	if gates.disableSendQuery {
 		result.Data = "This server has disabled query sending"
 		return
 	}
@@ -855,8 +706,8 @@ func handleTcpPingTask(task *pb.Task, result *pb.TaskResult) {
 	}
 }
 
-func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
-	if agentConfig.DisableSendQuery {
+func handleIcmpPingTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *pb.TaskResult) {
+	if gates.disableSendQuery {
 		result.Data = "This server has disabled query sending"
 		return
 	}
@@ -887,8 +738,8 @@ func handleIcmpPingTask(task *pb.Task, result *pb.TaskResult) {
 	}
 }
 
-func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
-	if agentConfig.DisableSendQuery {
+func handleHttpGetTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *pb.TaskResult) {
+	if gates.disableSendQuery {
 		result.Data = "This server has disabled query sending"
 		return
 	}
@@ -920,8 +771,8 @@ func handleHttpGetTask(task *pb.Task, result *pb.TaskResult) {
 	}
 }
 
-func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
-	if agentConfig.DisableCommandExecute {
+func handleCommandTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *pb.TaskResult) {
+	if gates.disableCommandExecute {
 		result.Data = "此 Agent 已禁止命令执行"
 		return
 	}
@@ -971,30 +822,23 @@ func handleCommandTask(task *pb.Task, result *pb.TaskResult) {
 	result.Delay = float32(time.Since(startedAt).Seconds())
 }
 
-func handleReportConfigTask(result *pb.TaskResult) {
-	// Snapshot agentConfig under reloadMu in the same critical section that
-	// applyPendingReload uses for its `agentConfig = cfg` struct assignment
-	// (see main.go:1079-1113 and the lock contract at main.go:1003-1011 /
-	// main.go:287-294). Bare reads here race with that multi-field write
-	// and can observe a torn snapshot; copying the struct under the lock
-	// and operating on the local copy keeps the reader-side consistent.
+func handleReportConfigTaskWithConfig(config *model.AgentConfig, result *pb.TaskResult) {
 	reloadMu.Lock()
 	if reloadTimer != nil {
 		reloadMu.Unlock()
 		result.Data = "another reload is in process"
 		return
 	}
-	cfg := agentConfig
 	reloadMu.Unlock()
 
-	if cfg.DisableCommandExecute {
+	if config.DisableCommandExecute {
 		result.Data = "此 Agent 已禁止命令执行"
 		return
 	}
 
 	println("Executing Report Config Task")
 
-	c, err := json.Marshal(cfg)
+	c, err := json.Marshal(config)
 	if err != nil {
 		result.Data = err.Error()
 		return
@@ -1033,10 +877,10 @@ func reloadPending() bool {
 // counter-ApplyConfig carrying the previous secret, and the supersede path
 // drops the original timer before its Save runs.
 //
-// Save target path: the AgentConfig struct here is built by value-copying
-// the live agentConfig (preserving the unexported filePath captured at
-// Read), then merging the JSON payload on top (json:"-" keeps filePath
-// untouched). Pass-by-value into applyPendingReload preserves it again. If
+// Save target path: the AgentConfig struct here is cloned from the runtime
+// snapshot loaded after reloadMu is acquired (preserving the unexported
+// filePath captured at Read), then merges the JSON payload on top. Pass-by-
+// value into applyPendingReload preserves it again. If
 // any of these copies stops preserving filePath, Save silently fails with
 // "open : no such file" — TestApplyPendingReloadWritesToConfigReadPath
 // pins down the end-to-end invariant.
@@ -1086,11 +930,12 @@ func handleApplyConfigTask(task *pb.Task, result *pb.TaskResult) {
 	reloadMu.Lock()
 	defer reloadMu.Unlock()
 
-	tmpConfig, ok := parseApplyConfigLocked(task, result)
+	config := loadRuntimeConfig()
+	tmpConfig, ok := parseApplyConfigLocked(config, task, result)
 	if !ok {
 		return
 	}
-	if tmpConfig.ClientSecret != agentConfig.ClientSecret {
+	if tmpConfig.ClientSecret != config.ClientSecret {
 		result.Data = "ApplyConfig rejected: client_secret rotation must use TaskTypeServerTransferApply"
 		return
 	}
@@ -1118,7 +963,8 @@ func handleServerTransferApplyTask(task *pb.Task, result *pb.TaskResult) {
 	reloadMu.Lock()
 	defer reloadMu.Unlock()
 
-	tmpConfig, ok := parseApplyConfigLocked(task, result)
+	config := loadRuntimeConfig()
+	tmpConfig, ok := parseApplyConfigLocked(config, task, result)
 	if !ok {
 		return
 	}
@@ -1135,18 +981,16 @@ func handleServerTransferApplyTask(task *pb.Task, result *pb.TaskResult) {
 	result.Successful = true
 }
 
-// parseApplyConfigLocked reads agentConfig as the unmarshal baseline. Caller
-// MUST hold reloadMu: applyPendingReload commits `agentConfig = cfg` under
-// the same lock, and reading agentConfig outside this critical section let
-// a follow-up ApplyConfig capture a stale pre-rotation baseline and silently
-// undo the rotation when its own timer fired (caught under -race in
-// TestHandleApplyConfigTaskRaceFreeWithCommittingReload).
-func parseApplyConfigLocked(task *pb.Task, result *pb.TaskResult) (model.AgentConfig, bool) {
-	if agentConfig.DisableCommandExecute {
+// parseApplyConfigLocked uses the snapshot loaded after acquiring reloadMu as
+// the edit baseline. Loading before the lock would let a waiting ApplyConfig
+// overwrite a newer committed generation with stale fields after the lock is
+// released by applyPendingReload.
+func parseApplyConfigLocked(config *model.AgentConfig, task *pb.Task, result *pb.TaskResult) (model.AgentConfig, bool) {
+	if config.DisableCommandExecute {
 		result.Data = "此 Agent 已禁止命令执行 (DisableCommandExecute)"
 		return model.AgentConfig{}, false
 	}
-	tmpConfig := agentConfig
+	tmpConfig := config.Clone()
 	if err := json.Unmarshal([]byte(task.GetData()), &tmpConfig); err != nil {
 		printf("Parsing Config failed: %v", err)
 		result.Data = err.Error()
@@ -1170,7 +1014,7 @@ func scheduleConfigReload(cfg model.AgentConfig, isTransfer bool) {
 		println("Superseding pending reload with newer config")
 	}
 	println("Will reload workers in 10 seconds")
-	pendingConfig := cfg
+	pendingConfig := cfg.Clone()
 	var timer *time.Timer
 	timer = time.AfterFunc(10*time.Second, func() {
 		applyPendingReload(timer, pendingConfig)
@@ -1179,8 +1023,8 @@ func scheduleConfigReload(cfg model.AgentConfig, isTransfer bool) {
 	reloadIsTransfer = isTransfer
 }
 
-// applyPendingReload commits cfg to disk and to the live agentConfig, but
-// only if thisTimer is still the active reload timer (no supersede
+// applyPendingReload commits cfg to disk, the runtime snapshot and the locked
+// persistence working copy, but only if thisTimer is still the active reload timer (no supersede
 // happened between AfterFunc firing and the callback acquiring reloadMu).
 // Identity-checking the timer instead of "is any timer scheduled" is the
 // only thing preventing a fired-but-not-yet-run stale callback from
@@ -1202,235 +1046,15 @@ func applyPendingReload(thisTimer *time.Timer, cfg model.AgentConfig) {
 	// reasoning. The save runs under reloadMu so concurrent
 	// handleApplyConfigTask calls cannot observe a half-committed state
 	// (timer cleared but agentConfig not yet swapped).
-	if err := cfg.Save(); err != nil {
+	if err := commitPendingRuntimeConfig(cfg, func() {
+		reloadTimer = nil
+		reloadIsTransfer = false
+	}, notifyReloadWorker); err != nil {
 		printf("Save new config failed: %v", err)
 		// Leave reloadTimer in place so a retry from the dashboard can
 		// supersede it; clearing it here would let the dashboard believe
 		// the rotation succeeded.
 		return
-	}
-	reloadTimer = nil
-	reloadIsTransfer = false
-	// 先发布 credential 快照再做 `agentConfig = cfg` — AuthHandler 闭包只读
-	// liveCredentials 快照，不读 agentConfig 本身。两个写入顺序不影响 auth
-	// 正确性（任何一刻读到的快照都是「旧」或「新」整体之一），但保证 publish
-	// 与 swap 不会跨 GC 被插入未对齐的中间态。
-	publishCredentials(cfg)
-	agentConfig = cfg
-	geoipReported = false
-	logger.SetEnable(agentConfig.Debug)
-	monitor.InitConfig(&agentConfig)
-	monitor.CustomEndpoints = agentConfig.CustomIPApi
-	// 通知 worker 走重连让新凭据上链路。reloadSigChan 是 unbuffered，
-	// 必须用 non-blocking 发送：worker 在断网后会走 retry()，那段时间没有
-	// 接收方；如果在这里同步发送，AfterFunc goroutine 会被卡死。
-	// 丢弃信号是安全的 —— 配置已经写盘+生效，下一次 worker 进 select 会因为
-	// wCtx 或后续事件自然走到下一轮重连，新凭据会被新连接采用。
-	select {
-	case reloadSigChan <- struct{}{}:
-	default:
-	}
-}
-
-type WindowSize struct {
-	Cols uint32
-	Rows uint32
-}
-
-func handleTerminalTask(task *pb.Task) {
-	if agentConfig.DisableCommandExecute {
-		println("此 Agent 已禁止命令执行")
-		return
-	}
-	var terminal model.TerminalTask
-	err := json.Unmarshal([]byte(task.GetData()), &terminal)
-	if err != nil {
-		printf("Terminal 任务解析错误: %v", err)
-		return
-	}
-
-	remoteIO, err := client.IOStream(context.Background())
-	if err != nil {
-		printf("Terminal IOStream失败: %v", err)
-		return
-	}
-
-	// 发送 StreamID
-	if err := remoteIO.Send(&pb.IOStreamData{Data: append([]byte{
-		0xff, 0x05, 0xff, 0x05,
-	}, []byte(terminal.StreamID)...)}); err != nil {
-		printf("Terminal 发送StreamID失败: %v", err)
-		return
-	}
-
-	tty, err := pty.Start()
-	if err != nil {
-		printf("Terminal pty.Start失败 %v", err)
-		return
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go ioStreamKeepAlive(ctx, remoteIO)
-
-	defer func() {
-		err := tty.Close()
-		errCloseSend := remoteIO.CloseSend()
-		println("terminal exit", terminal.StreamID, err, errCloseSend)
-	}()
-	println("terminal init", terminal.StreamID)
-
-	go func() {
-		buf := make([]byte, 10240)
-		for {
-			read, err := tty.Read(buf)
-			if err != nil {
-				remoteIO.Send(&pb.IOStreamData{Data: []byte(err.Error())})
-				remoteIO.CloseSend()
-				return
-			}
-			remoteIO.Send(&pb.IOStreamData{Data: buf[:read]})
-		}
-	}()
-
-	for {
-		var remoteData *pb.IOStreamData
-		if remoteData, err = remoteIO.Recv(); err != nil {
-			return
-		}
-		if len(remoteData.Data) == 0 {
-			continue
-		}
-		switch remoteData.Data[0] {
-		case 0:
-			tty.Write(remoteData.Data[1:])
-		case 1:
-			decoder := json.NewDecoder(strings.NewReader(string(remoteData.Data[1:])))
-			var resizeMessage WindowSize
-			err := decoder.Decode(&resizeMessage)
-			if err != nil {
-				continue
-			}
-			tty.Setsize(resizeMessage.Cols, resizeMessage.Rows)
-		}
-	}
-}
-
-func handleNATTask(task *pb.Task) {
-	if agentConfig.DisableNat {
-		println("This server has disabled NAT traversal")
-		return
-	}
-
-	var nat model.TaskNAT
-	err := json.Unmarshal([]byte(task.GetData()), &nat)
-	if err != nil {
-		printf("NAT 任务解析错误: %v", err)
-		return
-	}
-
-	remoteIO, err := client.IOStream(context.Background())
-	if err != nil {
-		printf("NAT IOStream失败: %v", err)
-		return
-	}
-
-	// 发送 StreamID
-	if err := remoteIO.Send(&pb.IOStreamData{Data: append([]byte{
-		0xff, 0x05, 0xff, 0x05,
-	}, []byte(nat.StreamID)...)}); err != nil {
-		printf("NAT 发送StreamID失败: %v", err)
-		return
-	}
-
-	conn, err := net.Dial("tcp", nat.Host)
-	if err != nil {
-		printf("NAT Dial %s 失败：%s", nat.Host, err)
-		return
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go ioStreamKeepAlive(ctx, remoteIO)
-
-	defer func() {
-		err := conn.Close()
-		errCloseSend := remoteIO.CloseSend()
-		println("NAT exit", nat.StreamID, err, errCloseSend)
-	}()
-	println("NAT init", nat.StreamID)
-
-	go func() {
-		buf := make([]byte, 10240)
-		for {
-			read, err := conn.Read(buf)
-			if err != nil {
-				remoteIO.Send(&pb.IOStreamData{Data: []byte(err.Error())})
-				remoteIO.CloseSend()
-				return
-			}
-			remoteIO.Send(&pb.IOStreamData{Data: buf[:read]})
-		}
-	}()
-
-	for {
-		var remoteData *pb.IOStreamData
-		if remoteData, err = remoteIO.Recv(); err != nil {
-			return
-		}
-		conn.Write(remoteData.Data)
-	}
-}
-
-func handleFMTask(task *pb.Task) {
-	if agentConfig.DisableCommandExecute {
-		println("此 Agent 已禁止命令执行")
-		return
-	}
-	var fmTask model.TaskFM
-	err := json.Unmarshal([]byte(task.GetData()), &fmTask)
-	if err != nil {
-		printf("FM 任务解析错误: %v", err)
-		return
-	}
-
-	remoteIO, err := client.IOStream(context.Background())
-	if err != nil {
-		printf("FM IOStream失败: %v", err)
-		return
-	}
-
-	// 发送 StreamID
-	if err := remoteIO.Send(&pb.IOStreamData{Data: append([]byte{
-		0xff, 0x05, 0xff, 0x05,
-	}, []byte(fmTask.StreamID)...)}); err != nil {
-		printf("FM 发送StreamID失败: %v", err)
-		return
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go ioStreamKeepAlive(ctx, remoteIO)
-
-	defer func() {
-		errCloseSend := remoteIO.CloseSend()
-		println("FM exit", fmTask.StreamID, nil, errCloseSend)
-	}()
-	println("FM init", fmTask.StreamID)
-
-	fmc := fm.NewFMClient(remoteIO, printf)
-	for {
-		var remoteData *pb.IOStreamData
-		if remoteData, err = remoteIO.Recv(); err != nil {
-			return
-		}
-		if len(remoteData.Data) == 0 {
-			continue
-		}
-		fmc.DoTask(remoteData)
 	}
 }
 
@@ -1463,20 +1087,4 @@ func ioStreamKeepAlive(ctx context.Context, stream pb.NezhaService_IOStreamClien
 			}
 		}
 	}
-}
-
-func doWithTimeout[T any](fn func() (T, error), timeout time.Duration) (T, error) {
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	var t T
-	var err error
-	go func() {
-		defer cancel()
-		t, err = fn()
-	}()
-	<-timeoutCtx.Done()
-	if timeoutCtx.Err() != context.Canceled {
-		return t, fmt.Errorf("context error: %v, fn err: %v", timeoutCtx.Err(), err)
-	}
-	return t, err
 }

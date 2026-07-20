@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -11,31 +9,20 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/nezhahq/agent/model"
-	"github.com/nezhahq/agent/pkg/processgroup"
 	pb "github.com/nezhahq/agent/proto"
 )
 
 const (
-	mcpExecDefaultTimeoutSec = 30
-	mcpExecMaxTimeoutSec     = 300
-	mcpExecDefaultMaxOutput  = 64 * 1024
-	mcpExecAbsoluteMaxOutput = 1 * 1024 * 1024
-	mcpFsReadDefaultMax      = 1 * 1024 * 1024
-	mcpFsWriteMaxSize        = 8 * 1024 * 1024
-	mcpFsListMaxEntries      = 5000
+	mcpFsReadDefaultMax = 1 * 1024 * 1024
+	mcpFsWriteMaxSize   = 8 * 1024 * 1024
+	mcpFsListMaxEntries = 5000
 )
-
-// execTimeoutCleanupHook 让单测可以验证超时分支的清理顺序
-// （dispose-before-wait）。生产路径下是 no-op。
-var execTimeoutCleanupHook = func(stage string) {}
 
 // mcpReply 把任意 result 结构序列化为 JSON 字符串，写入 pb.TaskResult.Data，并标 Successful。
 // 任何序列化失败回退到一个明显的错误字符串，保证 dashboard 始终收到合法 JSON。
@@ -54,244 +41,6 @@ func mcpReply(result *pb.TaskResult, payload any) {
 func mcpReplyError(result *pb.TaskResult, msg string) {
 	result.Successful = false
 	result.Data = msg
-}
-
-// mcpExecEnvAllowlist 是远程 exec 子进程从 agent 进程继承的环境变量白名单。
-// 只放运行普通命令必需的 OS 变量；agent 自身的 secret（client secret、
-// proxy 凭据、云厂商 token 等）通常以其它变量名注入进程环境，全量继承
-// os.Environ() 会把它们暴露给任意被执行命令。调用方仍可通过 req.Env 显式
-// 追加自己需要的变量。
-var mcpExecEnvAllowlist = []string{
-	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TZ", "TERM",
-	"SystemRoot", "windir", "TEMP", "TMP", "PATHEXT", "ComSpec",
-	"USERPROFILE", "HOMEDRIVE", "HOMEPATH", "SystemDrive", "ProgramFiles",
-}
-
-// mcpExecEnv 构造远程 exec 的子进程环境：从 os.Environ() 仅保留白名单变量，
-// 再叠加调用方显式传入的 Env（调用方值覆盖同名变量）。
-func mcpExecEnv(extra map[string]string) []string {
-	allowed := make(map[string]struct{}, len(mcpExecEnvAllowlist))
-	for _, k := range mcpExecEnvAllowlist {
-		allowed[k] = struct{}{}
-	}
-	env := make([]string, 0, len(mcpExecEnvAllowlist)+len(extra))
-	for _, kv := range os.Environ() {
-		eq := strings.IndexByte(kv, '=')
-		if eq <= 0 {
-			continue
-		}
-		if _, ok := allowed[kv[:eq]]; ok {
-			env = append(env, kv)
-		}
-	}
-	for k, v := range extra {
-		env = append(env, k+"="+v)
-	}
-	return env
-}
-
-// killAndReapAfterStart kills the process group and then reaps the started
-// leader with cmd.Wait(). It is used on post-Start setup failures (AddProcess
-// / ResumeMainThread): killing alone leaves the os.Process handle held — a
-// Windows process-handle leak and a Unix zombie — on every such failure.
-// cmd.Wait() releases those OS resources. Best-effort: errors are expected
-// (the process was just killed) and ignored.
-func killAndReapAfterStart(cmd *exec.Cmd, pgid int) {
-	killProcessGroupHard(cmd, pgid)
-	if cmd != nil && cmd.Process != nil {
-		_ = cmd.Wait()
-	}
-}
-
-// ---------- exec ----------
-
-type truncatingBuffer struct {
-	buf  bytes.Buffer
-	max  int
-	full bool
-}
-
-func (t *truncatingBuffer) Write(p []byte) (int, error) {
-	if t.full {
-		return len(p), nil
-	}
-	remain := t.max - t.buf.Len()
-	if remain <= 0 {
-		t.full = true
-		return len(p), nil
-	}
-	if len(p) <= remain {
-		return t.buf.Write(p)
-	}
-	_, _ = t.buf.Write(p[:remain])
-	t.full = true
-	return len(p), nil
-}
-
-func handleExecTask(task *pb.Task, result *pb.TaskResult) {
-	if agentConfig.DisableCommandExecute {
-		mcpReply(result, model.ExecResult{Error: "agent disabled command execution"})
-		return
-	}
-	var req model.ExecRequest
-	if err := json.Unmarshal([]byte(task.GetData()), &req); err != nil {
-		mcpReplyError(result, "invalid exec request: "+err.Error())
-		return
-	}
-	if strings.TrimSpace(req.Cmd) == "" {
-		mcpReply(result, model.ExecResult{Error: "cmd required"})
-		return
-	}
-
-	timeoutSec := req.TimeoutSeconds
-	if timeoutSec == 0 {
-		timeoutSec = mcpExecDefaultTimeoutSec
-	}
-	if timeoutSec > mcpExecMaxTimeoutSec {
-		timeoutSec = mcpExecMaxTimeoutSec
-	}
-	maxOut := int(req.MaxOutputBytes)
-	if maxOut == 0 {
-		maxOut = mcpExecDefaultMaxOutput
-	}
-	if maxOut > mcpExecAbsoluteMaxOutput {
-		maxOut = mcpExecAbsoluteMaxOutput
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
-	defer cancel()
-
-	cmd := processgroup.NewSuspendedExecCommand(req.Cmd, req.Args...)
-	cmd.Dir = req.Cwd
-	cmd.Env = mcpExecEnv(req.Env)
-	if req.Stdin != "" {
-		cmd.Stdin = strings.NewReader(req.Stdin)
-	}
-	outBuf := &truncatingBuffer{max: maxOut}
-	errBuf := &truncatingBuffer{max: maxOut}
-
-	// Own the stdio pipes explicitly: os/exec's "Stdout = io.Writer" path
-	// spawns internal copy goroutines that cmd.Wait blocks on, so a
-	// daemonized grandchild holding the inherited fd would pin the wait
-	// past timeout. With user-owned pipes the timeout branch can close the
-	// reader end and cmd.Wait returns immediately.
-	stdoutR, stdoutW, pipeErr := os.Pipe()
-	if pipeErr != nil {
-		mcpReply(result, model.ExecResult{Error: execErrMsg(pipeErr)})
-		return
-	}
-	stderrR, stderrW, pipeErr := os.Pipe()
-	if pipeErr != nil {
-		_ = stdoutR.Close()
-		_ = stdoutW.Close()
-		mcpReply(result, model.ExecResult{Error: execErrMsg(pipeErr)})
-		return
-	}
-	cmd.Stdout = stdoutW
-	cmd.Stderr = stderrW
-
-	pg, pgErr := processgroup.NewProcessExitGroup()
-	if pgErr != nil {
-		_ = stdoutR.Close()
-		_ = stdoutW.Close()
-		_ = stderrR.Close()
-		_ = stderrW.Close()
-		mcpReply(result, model.ExecResult{Error: execErrMsg(pgErr)})
-		return
-	}
-	defer pg.Close()
-
-	start := time.Now()
-	if err := cmd.Start(); err != nil {
-		_ = stdoutR.Close()
-		_ = stdoutW.Close()
-		_ = stderrR.Close()
-		_ = stderrW.Close()
-		mcpReply(result, model.ExecResult{ExitCode: -1, Error: execErrMsg(err)})
-		return
-	}
-	// Parent end of the write pipes is no longer needed by us; the child
-	// inherited a dup'd fd, so closing here makes the reader hit EOF the
-	// moment the LAST holder (including escaped grandchildren) drops it.
-	_ = stdoutW.Close()
-	_ = stderrW.Close()
-
-	pgid := processGroupID(cmd)
-	if err := pg.AddProcess(cmd); err != nil {
-		killAndReapAfterStart(cmd, pgid)
-		_ = stdoutR.Close()
-		_ = stderrR.Close()
-		mcpReply(result, model.ExecResult{ExitCode: -1, Error: execErrMsg(err)})
-		return
-	}
-	// Windows: NewSuspendedExecCommand starts CREATE_SUSPENDED so the
-	// JobObject binds before any user code runs in the child. Resume the
-	// main thread now that AssignProcessToJobObject has happened. POSIX
-	// stub is a no-op so this is portable.
-	if err := processgroup.ResumeMainThread(cmd); err != nil {
-		killAndReapAfterStart(cmd, pgid)
-		_ = stdoutR.Close()
-		_ = stderrR.Close()
-		mcpReply(result, model.ExecResult{ExitCode: -1, Error: execErrMsg(err)})
-		return
-	}
-
-	copyDone := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(outBuf, stdoutR); copyDone <- struct{}{} }()
-	go func() { _, _ = io.Copy(errBuf, stderrR); copyDone <- struct{}{} }()
-
-	waitErrCh := make(chan error, 1)
-	go func() { waitErrCh <- cmd.Wait() }()
-
-	var runErr error
-	select {
-	case runErr = <-waitErrCh:
-		pg.ReapDescendants()
-	case <-ctx.Done():
-		execTimeoutCleanupHook("dispose")
-		_ = pg.Dispose()
-		// Force the copy goroutines to release the pipe so cmd.Wait cannot
-		// be held hostage by a detached grandchild that still owns the fd.
-		_ = stdoutR.Close()
-		_ = stderrR.Close()
-		execTimeoutCleanupHook("wait")
-		select {
-		case runErr = <-waitErrCh:
-		case <-time.After(2 * time.Second):
-			runErr = errors.New("cmd.Wait pinned after kill; pipe close forced abort")
-		}
-	}
-	// Close the reader ends first so any copy goroutine still blocked on a
-	// pipe read (e.g. a detached grandchild holding the write end) is forced
-	// to return, then wait unconditionally for BOTH goroutines to finish.
-	// Reading outBuf/errBuf before the copies exit is a data race —
-	// bytes.Buffer is not concurrency-safe — so the wait must not be bounded.
-	_ = stdoutR.Close()
-	_ = stderrR.Close()
-	<-copyDone
-	<-copyDone
-	elapsed := time.Since(start)
-
-	res := model.ExecResult{
-		Stdout:          outBuf.buf.String(),
-		Stderr:          errBuf.buf.String(),
-		DurationMs:      elapsed.Milliseconds(),
-		StdoutTruncated: outBuf.full,
-		StderrTruncated: errBuf.full,
-	}
-	if ctx.Err() == context.DeadlineExceeded {
-		res.TimedOut = true
-	}
-	if runErr != nil {
-		var ee *exec.ExitError
-		if errors.As(runErr, &ee) {
-			res.ExitCode = ee.ExitCode()
-		} else {
-			res.ExitCode = -1
-			res.Error = execErrMsg(runErr)
-		}
-	}
-	mcpReply(result, res)
 }
 
 // ---------- fs helpers ----------
@@ -358,8 +107,8 @@ func makeEntry(name string, info os.FileInfo, parent string) model.FsEntry {
 
 // ---------- fs.list ----------
 
-func handleFsListTask(task *pb.Task, result *pb.TaskResult) {
-	if agentConfig.DisableCommandExecute {
+func handleFsListTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *pb.TaskResult) {
+	if gates.disableCommandExecute {
 		mcpReply(result, model.FsListResult{Error: "agent disabled file operations"})
 		return
 	}
@@ -435,8 +184,8 @@ func handleFsListTask(task *pb.Task, result *pb.TaskResult) {
 
 // ---------- fs.read ----------
 
-func handleFsReadTask(task *pb.Task, result *pb.TaskResult) {
-	if agentConfig.DisableCommandExecute {
+func handleFsReadTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *pb.TaskResult) {
+	if gates.disableCommandExecute {
 		mcpReply(result, model.FsReadResult{Error: "agent disabled file operations"})
 		return
 	}
@@ -528,8 +277,8 @@ func handleFsReadTask(task *pb.Task, result *pb.TaskResult) {
 
 // ---------- fs.write ----------
 
-func handleFsWriteTask(task *pb.Task, result *pb.TaskResult) {
-	if agentConfig.DisableCommandExecute {
+func handleFsWriteTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *pb.TaskResult) {
+	if gates.disableCommandExecute {
 		mcpReply(result, model.FsWriteResult{Error: "agent disabled file operations"})
 		return
 	}
@@ -562,7 +311,7 @@ func handleFsWriteTask(task *pb.Task, result *pb.TaskResult) {
 	var data []byte
 	switch encoding {
 	case "utf8":
-		data = []byte(req.Content)
+		data = fsWriteUTF8Data(req.Content)
 	case "base64":
 		b, decErr := base64.StdEncoding.DecodeString(req.Content)
 		if decErr != nil {
@@ -711,8 +460,8 @@ func copyFileFallback(src, dst string, mode os.FileMode) error {
 
 // ---------- fs.delete ----------
 
-func handleFsDeleteTask(task *pb.Task, result *pb.TaskResult) {
-	if agentConfig.DisableCommandExecute {
+func handleFsDeleteTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *pb.TaskResult) {
+	if gates.disableCommandExecute {
 		mcpReply(result, model.FsDeleteResult{Error: "agent disabled file operations"})
 		return
 	}

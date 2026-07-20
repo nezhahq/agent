@@ -14,9 +14,9 @@ import (
 // 让我们在不真起 gRPC 通道的情况下断言协议行为。
 type fakeIOStream struct {
 	pb.NezhaService_IOStreamClient
-	sent      [][]byte
-	sendErr   error
-	closed    bool
+	sent    [][]byte
+	sendErr error
+	closed  bool
 }
 
 func (f *fakeIOStream) Send(d *pb.IOStreamData) error {

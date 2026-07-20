@@ -2,88 +2,87 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
-
-	pb "github.com/nezhahq/agent/proto"
 
 	"github.com/nezhahq/agent/model"
+	pb "github.com/nezhahq/agent/proto"
 )
 
-// Race scenario: handleReportConfigTask reads `agentConfig.DisableCommandExecute`
-// (line ~935) and later marshals `agentConfig` (line ~947) outside reloadMu,
-// while applyPendingReload commits `agentConfig = cfg` — a multi-field struct
-// assignment — under reloadMu. The same file documents this lock discipline
-// at main.go:1003-1011 ("Hold reloadMu across the agentConfig read …") and
-// at main.go:287-294 (bare reads "与 applyPendingReload 的 agentConfig = cfg
-// 结构体赋值形成" a race). The reloadPending() check between the two reads
-// briefly takes the lock but does not cover either of them, so a concurrent
-// reload firing during a report dump can be observed mid-swap.
-//
-// This test runs handleReportConfigTask in a tight loop against a parallel
-// `agentConfig = cfg` writer holding reloadMu. Without the fix, the Go race
-// detector flags the unlocked reads at lines 935 and 947. With the fix, the
-// reads happen under reloadMu and the test passes under -race.
-func TestHandleReportConfigTaskDoesNotRaceWithReload(t *testing.T) {
-	originalConfig := agentConfig
-	t.Cleanup(func() {
-		agentConfig = originalConfig
-		clearReloadTimer()
-	})
-
-	// Two configs we will swap between. Both serialise cleanly so
-	// json.Marshal inside handleReportConfigTask succeeds either way.
+func TestHandleReportConfigTaskObservesCompletePublishedGeneration(t *testing.T) {
+	// Given
+	restoreRuntimeConfigSnapshot(t)
 	a := model.AgentConfig{ClientSecret: "secret-a", UUID: "uuid-a"}
 	b := model.AgentConfig{ClientSecret: "secret-b", UUID: "uuid-b"}
-	agentConfig = a
+	publishRuntimeConfig(a)
+	const rounds = 500
 
-	var stop atomic.Bool
-	var wg sync.WaitGroup
-
-	// Writer: mimics applyPendingReload's `agentConfig = cfg` under reloadMu.
-	wg.Add(1)
+	// When
+	var wait sync.WaitGroup
+	wait.Add(2)
 	go func() {
-		defer wg.Done()
-		for i := 0; !stop.Load(); i++ {
-			reloadMu.Lock()
-			if i%2 == 0 {
-				agentConfig = a
+		defer wait.Done()
+		for index := range rounds {
+			if index%2 == 0 {
+				publishRuntimeConfig(a)
 			} else {
-				agentConfig = b
+				publishRuntimeConfig(b)
 			}
-			reloadMu.Unlock()
 		}
 	}()
-
-	// Reader: the production handler. Without the fix this races on the
-	// bare `agentConfig.DisableCommandExecute` read and the json.Marshal,
-	// which `go test -race` reports as a DATA RACE.
-	wg.Add(1)
+	results := make(chan model.AgentConfig, rounds)
+	failures := make(chan error, 1)
 	go func() {
-		defer wg.Done()
-		for !stop.Load() {
-			var r pb.TaskResult
-			handleReportConfigTask(&r)
-			// Sanity-check: whatever snapshot we marshalled must be one of
-			// the two whole configs, never a torn mix of fields. The race
-			// detector is the primary signal; this is a belt-and-braces
-			// invariant for non-race runs.
-			if r.Successful && r.Data != "" {
-				var got model.AgentConfig
-				if err := json.Unmarshal([]byte(r.Data), &got); err == nil {
-					if !(got.ClientSecret == "secret-a" && got.UUID == "uuid-a") &&
-						!(got.ClientSecret == "secret-b" && got.UUID == "uuid-b") {
-						t.Errorf("torn agentConfig snapshot: %+v", got)
-						return
-					}
-				}
+		defer wait.Done()
+		for iteration := range rounds {
+			var result pb.TaskResult
+			handleReportConfigTaskWithConfig(loadRuntimeConfig(), &result)
+			observed, err := decodeReportConfigResult(iteration, &result)
+			if err != nil {
+				failures <- err
+				return
 			}
+			results <- observed
 		}
 	}()
+	wait.Wait()
+	close(results)
+	close(failures)
 
-	time.Sleep(50 * time.Millisecond)
-	stop.Store(true)
-	wg.Wait()
+	// Then
+	if err := <-failures; err != nil {
+		t.Fatal(err)
+	}
+	observations := 0
+	for observed := range results {
+		observations++
+		completeA := observed.ClientSecret == a.ClientSecret && observed.UUID == a.UUID
+		completeB := observed.ClientSecret == b.ClientSecret && observed.UUID == b.UUID
+		if !completeA && !completeB {
+			t.Fatalf("torn report config generation: secret=%q uuid=%q", observed.ClientSecret, observed.UUID)
+		}
+	}
+	if observations < 100 {
+		t.Fatalf("successful ReportConfig observations=%d, want at least 100", observations)
+	}
+}
+
+func TestDecodeReportConfigResultRejectsUnsuccessfulResponse(t *testing.T) {
+	result := pb.TaskResult{Data: "another reload is in process"}
+
+	if _, err := decodeReportConfigResult(17, &result); err == nil {
+		t.Fatal("ReportConfig decoder accepted an unsuccessful response")
+	}
+}
+
+func decodeReportConfigResult(iteration int, result *pb.TaskResult) (model.AgentConfig, error) {
+	if !result.Successful {
+		return model.AgentConfig{}, fmt.Errorf("ReportConfig iteration %d failed: %s", iteration, result.Data)
+	}
+	var observed model.AgentConfig
+	if err := json.Unmarshal([]byte(result.Data), &observed); err != nil {
+		return model.AgentConfig{}, fmt.Errorf("unmarshal ReportConfig iteration %d: %w", iteration, err)
+	}
+	return observed, nil
 }
