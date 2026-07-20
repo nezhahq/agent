@@ -3,25 +3,26 @@ package logger
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nezhahq/service"
 )
 
 var (
-	defaultLogger = &ServiceLogger{enabled: true, logger: service.ConsoleLogger}
+	defaultLogger = NewServiceLogger(true, service.ConsoleLogger)
 
 	loggerOnce sync.Once
 )
 
 type ServiceLogger struct {
-	enabled bool
+	enabled atomic.Bool
 	logger  service.Logger
 }
 
 func InitDefaultLogger(enabled bool, logger service.Logger) {
 	loggerOnce.Do(func() {
-		defaultLogger.enabled = enabled
+		defaultLogger.enabled.Store(enabled)
 		defaultLogger.logger = logger
 	})
 }
@@ -47,37 +48,36 @@ func Errorf(format string, v ...interface{}) error {
 }
 
 func NewServiceLogger(enable bool, logger service.Logger) *ServiceLogger {
-	return &ServiceLogger{
-		enabled: enable,
-		logger:  logger,
-	}
+	serviceLogger := &ServiceLogger{logger: logger}
+	serviceLogger.enabled.Store(enable)
+	return serviceLogger
 }
 
 func (s *ServiceLogger) SetEnable(enable bool) {
-	s.enabled = enable
+	s.enabled.Store(enable)
 }
 
 func (s *ServiceLogger) Println(v ...interface{}) {
-	if s.enabled {
+	if s.enabled.Load() {
 		s.logger.Infof("NEZHA@%s>> %v", time.Now().Format(time.DateTime), fmt.Sprint(v...))
 	}
 }
 
 func (s *ServiceLogger) Printf(format string, v ...interface{}) {
-	if s.enabled {
+	if s.enabled.Load() {
 		s.logger.Infof("NEZHA@%s>> "+format, append([]interface{}{time.Now().Format(time.DateTime)}, v...)...)
 	}
 }
 
 func (s *ServiceLogger) Error(v ...interface{}) error {
-	if s.enabled {
+	if s.enabled.Load() {
 		return s.logger.Errorf("NEZHA@%s>> %v", time.Now().Format(time.DateTime), fmt.Sprint(v...))
 	}
 	return nil
 }
 
 func (s *ServiceLogger) Errorf(format string, v ...interface{}) error {
-	if s.enabled {
+	if s.enabled.Load() {
 		return s.logger.Errorf("NEZHA@%s>> "+format, append([]interface{}{time.Now().Format(time.DateTime)}, v...)...)
 	}
 	return nil
