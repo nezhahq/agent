@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nezhahq/agent/model"
 	"github.com/nezhahq/agent/pkg/logger"
 	"github.com/nezhahq/agent/pkg/util"
 	pb "github.com/nezhahq/agent/proto"
@@ -20,22 +21,29 @@ var (
 		"https://hostinger.com/cdn-cgi/trace",
 		"https://ahrefs.com/cdn-cgi/trace",
 	}
-	CustomEndpoints               []string
-	GeoQueryIP, CachedCountryCode string
-	GeoQueryIPChanged             bool = true
-	httpClientV4                       = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
-	httpClientV6                       = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
+	httpClientV4 = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, false)
+	httpClientV6 = util.NewSingleStackHTTPClient(time.Second*20, time.Second*5, time.Second*10, true)
+	fetchIPProbe = fetchIP
 
 	retryTimes      int
 	failedStartedAt time.Time
 	latestRetryAt   time.Time
+	geoQueryIP      string
+	countryCode     string
+	geoIPChanged    = true
+	geoIPFetchLock  sync.Mutex
+	geoIPLock       sync.RWMutex
 )
 
 // UpdateIP 按设置时间间隔更新IP地址的缓存
-func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
+func FetchIP(config *model.AgentConfig, useIPv6CountryCode bool) *pb.GeoIP {
 	logger.Println("正在更新本地缓存IP信息")
+	geoIPFetchLock.Lock()
+	defer geoIPFetchLock.Unlock()
 
+	geoIPLock.RLock()
 	if retryTimes > 2 && time.Now().Before(latestRetryAt.Add(latestRetryAt.Sub(failedStartedAt)*time.Duration(2))) {
+		geoIPLock.RUnlock()
 		logger.Println("IP地址获取失败次数过多，fallback到agent连接IP")
 		return &pb.GeoIP{
 			Use6: false,
@@ -45,37 +53,36 @@ func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
 			},
 		}
 	}
+	geoIPLock.RUnlock()
 
 	wg := new(sync.WaitGroup)
 	wg.Add(2)
 	var ipv4, ipv6 string
+	endpoints := cfList
+	if config != nil && len(config.CustomIPApi) > 0 {
+		endpoints = config.CustomIPApi
+	}
 	go func() {
 		defer wg.Done()
-		if len(CustomEndpoints) > 0 {
-			ipv4 = fetchIP(CustomEndpoints, false)
-		} else {
-			ipv4 = fetchIP(cfList, false)
-		}
+		ipv4 = fetchIPProbe(endpoints, false)
 	}()
 	go func() {
 		defer wg.Done()
-		if len(CustomEndpoints) > 0 {
-			ipv6 = fetchIP(CustomEndpoints, true)
-		} else {
-			ipv6 = fetchIP(cfList, true)
-		}
+		ipv6 = fetchIPProbe(endpoints, true)
 	}()
 	wg.Wait()
 
+	geoIPLock.Lock()
+	defer geoIPLock.Unlock()
 	if ipv6 != "" && (useIPv6CountryCode || ipv4 == "") {
-		GeoQueryIPChanged = GeoQueryIP != ipv6 || GeoQueryIPChanged
-		GeoQueryIP = ipv6
+		geoIPChanged = geoQueryIP != ipv6 || geoIPChanged
+		geoQueryIP = ipv6
 	} else if ipv4 != "" {
-		GeoQueryIPChanged = GeoQueryIP != ipv4 || GeoQueryIPChanged
-		GeoQueryIP = ipv4
+		geoIPChanged = geoQueryIP != ipv4 || geoIPChanged
+		geoQueryIP = ipv4
 	}
 
-	if GeoQueryIP != "" {
+	if geoQueryIP != "" {
 		retryTimes = 0
 		return &pb.GeoIP{
 			Use6: useIPv6CountryCode,
@@ -95,6 +102,25 @@ func FetchIP(useIPv6CountryCode bool) *pb.GeoIP {
 	}
 
 	return nil
+}
+
+func GeoIPChanged() bool {
+	geoIPLock.RLock()
+	defer geoIPLock.RUnlock()
+	return geoIPChanged
+}
+
+func MarkGeoIPReported(reportedCountryCode string) {
+	geoIPLock.Lock()
+	defer geoIPLock.Unlock()
+	countryCode = reportedCountryCode
+	geoIPChanged = false
+}
+
+func CachedCountryCode() string {
+	geoIPLock.RLock()
+	defer geoIPLock.RUnlock()
+	return countryCode
 }
 
 func fetchIP(servers []string, isV6 bool) string {
