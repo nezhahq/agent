@@ -1,167 +1,183 @@
 package fm
 
 import (
-	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
-	"io"
-	"io/fs"
 	"os"
-	"os/user"
-	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	pb "github.com/nezhahq/agent/proto"
 )
 
+type Sender interface {
+	Send(*pb.IOStreamData) error
+}
+
+type UploadReceiver interface {
+	Recv() (*pb.IOStreamData, error)
+}
+
+type Dependencies struct {
+	Context        context.Context
+	Sender         Sender
+	UploadReceiver UploadReceiver
+	Printf         func(string, ...interface{})
+}
+
 type Task struct {
-	taskClient pb.NezhaService_IOStreamClient
-	printf     func(string, ...interface{})
-	remoteData *pb.IOStreamData
+	context         context.Context
+	cancel          context.CancelCauseFunc
+	sender          Sender
+	uploadReceiver  UploadReceiver
+	printf          func(string, ...interface{})
+	openFile        func(string) (downloadFile, error)
+	parseCommand    commandParser
+	dispatchCommand commandDispatcher
+
+	producerMu sync.Mutex
+	accepting  bool
+	producers  sync.WaitGroup
+	active     atomic.Int64
+	files      map[downloadFile]struct{}
 }
 
-func NewFMClient(client pb.NezhaService_IOStreamClient, printFunc func(string, ...interface{})) *Task {
-	return &Task{
-		taskClient: client,
-		printf:     printFunc,
-	}
+type downloadFile interface {
+	Read([]byte) (int, error)
+	Stat() (os.FileInfo, error)
+	Close() error
 }
 
-func (t *Task) DoTask(data *pb.IOStreamData) {
-	t.remoteData = data
+type commandOperation byte
 
-	switch t.remoteData.Data[0] {
-	case 0:
-		t.listDir()
-	case 1:
-		go t.download()
-	case 2:
-		t.upload()
-	}
+const (
+	commandList commandOperation = iota
+	commandDownload
+	commandUpload
+)
+
+type parsedCommand struct {
+	operation commandOperation
+	path      string
+	fileSize  uint64
 }
 
-func (t *Task) listDir() {
-	dir := string(t.remoteData.Data[1:])
-	var entries []fs.DirEntry
-	var err error
-	for {
-		entries, err = os.ReadDir(dir)
-		if err != nil {
-			usr, err := user.Current()
-			if err != nil {
-				t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
-				return
-			}
-			dir = usr.HomeDir + string(filepath.Separator)
-			continue
-		}
-		break
+type commandParser func([]byte) (parsedCommand, error)
+type commandDispatcher func(parsedCommand) error
+
+var errInvalidCommandData = errors.New("data is invalid")
+
+func NewFMClient(dependencies Dependencies) *Task {
+	taskContext, cancelTask := context.WithCancelCause(dependencies.Context)
+	task := &Task{
+		context:        taskContext,
+		cancel:         cancelTask,
+		sender:         dependencies.Sender,
+		uploadReceiver: dependencies.UploadReceiver,
+		printf:         dependencies.Printf,
+		openFile:       openDownloadFile,
+		parseCommand:   defaultCommandParser,
+		accepting:      true,
+		files:          make(map[downloadFile]struct{}),
 	}
-	var buffer bytes.Buffer
-	td := Create(&buffer, dir)
-	for _, e := range entries {
-		newBin := AppendFileName(td, e.Name(), e.IsDir())
-		td = newBin
-	}
-	t.taskClient.Send(&pb.IOStreamData{Data: td})
+	task.dispatchCommand = task.dispatchParsedCommand
+	return task
 }
 
-func (t *Task) download() {
-	path := string(t.remoteData.Data[1:])
-	file, err := os.Open(path)
+func (t *Task) DoTask(data *pb.IOStreamData) error {
+	command, err := t.parseCommand(data.GetData())
 	if err != nil {
-		t.printf("Error opening file: %s", err)
-		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
-		return
-	}
-	defer file.Close()
-
-	fileInfo, err := file.Stat()
-	if err != nil {
-		t.printf("Error getting file info: %s", err)
-		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
-		return
+		return t.sendInvalidData()
 	}
 
-	fileSize := fileInfo.Size()
-	if fileSize <= 0 {
-		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(errors.New("requested file is empty"))})
-		return
-	}
-
-	// Send header (12 bytes)
-	var header bytes.Buffer
-	headerData := CreateFile(&header, uint64(fileSize))
-	if err := t.taskClient.Send(&pb.IOStreamData{Data: headerData}); err != nil {
-		t.printf("Error sending file header: %s", err)
-		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
-		return
-	}
-
-	for {
-		bp := bufPool.Get().(*bp)
-		n, err := file.Read(bp.buf)
-		if err != nil {
-			if err == io.EOF {
-				bufPool.Put(bp)
-				return
-			}
-			t.printf("Error reading file: %s", err)
-			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
-			bufPool.Put(bp)
-			return
-		}
-
-		if err := t.taskClient.Send(&pb.IOStreamData{Data: bp.buf[:n]}); err != nil {
-			t.printf("Error sending file chunk: %s", err)
-			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
-			bufPool.Put(bp)
-			return
-		}
-		bufPool.Put(bp)
-	}
+	return t.dispatchCommand(command)
 }
 
-func (t *Task) upload() {
-	if len(t.remoteData.Data) < 9 {
-		const err = "data is invalid"
-		t.printf(err)
-		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(errors.New(err))})
-		return
-	}
-
-	fileSize := binary.BigEndian.Uint64(t.remoteData.Data[1:9])
-	path := string(t.remoteData.Data[9:])
-
-	file, err := os.Create(path)
-	if err != nil {
-		t.printf("Error creating file: %s", err)
-		t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
-		return
-	}
-	defer file.Close()
-
-	totalReceived := uint64(0)
-
-	t.printf("receiving file: %s, size: %d", file.Name(), fileSize)
-	for totalReceived < fileSize {
-		if t.remoteData, err = t.taskClient.Recv(); err != nil {
-			t.printf("Error receiving data: %s", err)
-			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
-			return
+func (t *Task) dispatchParsedCommand(command parsedCommand) error {
+	switch command.operation {
+	case commandList:
+		return t.listDir(command.path)
+	case commandDownload:
+		if !t.startDownload(command.path) {
+			return context.Cause(t.context)
 		}
-
-		bytesWritten, err := file.Write(t.remoteData.Data)
-		if err != nil {
-			t.printf("Error writing to file: %s", err)
-			t.taskClient.Send(&pb.IOStreamData{Data: CreateErr(err)})
-			return
-		}
-
-		totalReceived += uint64(bytesWritten)
+		return nil
+	case commandUpload:
+		return t.upload(command.path, command.fileSize)
 	}
-	t.printf("received file %s.", file.Name())
-	t.taskClient.Send(&pb.IOStreamData{Data: completeIdentifier}) // NZUP
+	return nil
+}
+
+func defaultCommandParser(frame []byte) (parsedCommand, error) {
+	if len(frame) == 0 {
+		return parsedCommand{}, errInvalidCommandData
+	}
+	command := parsedCommand{operation: commandOperation(frame[0])}
+	switch command.operation {
+	case commandList, commandDownload:
+		command.path = string(frame[1:])
+	case commandUpload:
+		if len(frame) < 9 {
+			return parsedCommand{}, errInvalidCommandData
+		}
+		command.fileSize = binary.BigEndian.Uint64(frame[1:9])
+		command.path = string(frame[9:])
+	}
+	return command, nil
+}
+
+func (t *Task) sendInvalidData() error {
+	t.printf(errInvalidCommandData.Error())
+	return t.sender.Send(&pb.IOStreamData{Data: CreateErr(errInvalidCommandData)})
+}
+
+func (t *Task) startDownload(path string) bool {
+	t.producerMu.Lock()
+	if !t.accepting {
+		t.producerMu.Unlock()
+		return false
+	}
+	t.producers.Add(1)
+	active := t.active.Add(1)
+	t.producerMu.Unlock()
+	observeProducerCount(t.context, active)
+	go func() {
+		defer func() {
+			active := t.active.Add(-1)
+			observeProducerCount(t.context, active)
+			t.producers.Done()
+		}()
+		_ = t.download(path)
+	}()
+	return true
+}
+
+func (t *Task) Shutdown(cause error) {
+	t.producerMu.Lock()
+	t.accepting = false
+	t.cancel(cause)
+	for file := range t.files {
+		_ = file.Close()
+	}
+	t.producerMu.Unlock()
+	t.producers.Wait()
+}
+
+func (t *Task) registerFile(file downloadFile) bool {
+	t.producerMu.Lock()
+	defer t.producerMu.Unlock()
+	if !t.accepting {
+		return false
+	}
+	t.files[file] = struct{}{}
+	return true
+}
+
+func (t *Task) unregisterFile(file downloadFile) {
+	t.producerMu.Lock()
+	delete(t.files, file)
+	t.producerMu.Unlock()
 }
 
 type bp struct {
