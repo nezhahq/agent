@@ -212,14 +212,13 @@ func TestAnchoredIfMatch_CloseAfterCommitPreservesReplacement(t *testing.T) {
 		t.Fatalf("Seal(): %v", err)
 	}
 	result, commitErr := pending.CommitIfMatch("")
-	if commitErr != nil || !result.Committed {
-		t.Fatalf("CommitIfMatch() = %+v/%v, want committed", result, commitErr)
-	}
 
 	// When
 	closeErr := pending.Close()
 
 	// Then
+	// Keep commit assertions in the platform helper: Windows commits the rename
+	// before reporting that parent-directory durability cannot be confirmed.
 	assertDefaultAtomicReplaceResult(t, result, commitErr)
 	if closeErr != nil {
 		t.Fatalf("Close(): %v", closeErr)
