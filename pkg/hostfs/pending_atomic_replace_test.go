@@ -220,6 +220,7 @@ func TestAnchoredIfMatch_CloseAfterCommitPreservesReplacement(t *testing.T) {
 	closeErr := pending.Close()
 
 	// Then
+	assertDefaultAtomicReplaceResult(t, result, commitErr)
 	if closeErr != nil {
 		t.Fatalf("Close(): %v", closeErr)
 	}
