@@ -50,7 +50,10 @@ func NewProcessExitGroup() (*ProcessExitGroup, error) {
 }
 
 func NewCommand(args string) *exec.Cmd {
-	cmd := exec.Command("cmd")
+	// TaskTypeCommand is a deliberate remote command execution feature.
+	// The caller is authenticated via TLS + client-secret; shell expansion via
+	// cmd.exe /c is intentional so operators can use pipes and built-ins.
+	cmd := exec.Command("cmd") // #nosec G204 -- intentional shell execution for TaskTypeCommand
 	cmd.SysProcAttr = &windows.SysProcAttr{
 		CmdLine:       fmt.Sprintf("/c %s", args),
 		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP,

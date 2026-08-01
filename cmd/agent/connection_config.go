@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"log"
 
 	"github.com/nezhahq/agent/model"
 	"google.golang.org/grpc"
@@ -33,7 +34,11 @@ func (c connectionConfigTuple) dialOptions() []grpc.DialOption {
 	if c.TLS {
 		tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 		if c.InsecureTLS {
-			tlsConfig.InsecureSkipVerify = true
+			// InsecureSkipVerify disables TLS certificate verification.
+			// This exposes the connection to man-in-the-middle attacks and
+			// should only be used in trusted environments or during testing.
+			log.Println("WARNING: TLS certificate verification is disabled (insecure_tls=true). Use only in trusted environments.")
+			tlsConfig.InsecureSkipVerify = true // #nosec G402 -- user explicitly opted in; logged above
 		}
 		securityOption = grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))
 	} else {

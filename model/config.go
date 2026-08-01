@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -134,6 +135,13 @@ func ValidateConfig(c *AgentConfig, isRemoteEdit bool) error {
 
 	if c.ReportDelay < 1 || c.ReportDelay > 4 {
 		return errors.New("report-delay ranges from 1-4")
+	}
+
+	for _, apiURL := range c.CustomIPApi {
+		parsed, err := url.Parse(apiURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return fmt.Errorf("custom_ip_api entry %q must use http or https scheme", apiURL)
+		}
 	}
 
 	if !isRemoteEdit {

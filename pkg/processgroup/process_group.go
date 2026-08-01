@@ -35,7 +35,10 @@ func (g *ProcessExitGroup) Close() {
 func (g *ProcessExitGroup) IsClosed() bool { return g.closed }
 
 func NewCommand(arg string) *exec.Cmd {
-	cmd := exec.Command("sh", "-c", arg)
+	// TaskTypeCommand is a deliberate remote command execution feature.
+	// The caller is authenticated via TLS + client-secret; shell expansion is
+	// intentional so operators can use pipes, redirections, and built-ins.
+	cmd := exec.Command("sh", "-c", arg) // #nosec G204 -- intentional shell execution for TaskTypeCommand
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return cmd
 }
