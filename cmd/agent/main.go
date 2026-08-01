@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -745,6 +746,11 @@ func handleHttpGetTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *
 	}
 	start := time.Now()
 	taskUrl := task.GetData()
+	parsedURL, parseErr := url.Parse(taskUrl)
+	if parseErr != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		result.Data = "invalid URL: only http and https schemes are supported"
+		return
+	}
 	resp, err := httpClient.Get(taskUrl)
 	printf("HTTP-GET Task: %s", taskUrl)
 	if err == nil {
