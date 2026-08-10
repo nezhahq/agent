@@ -15,7 +15,7 @@ require (
 	github.com/jaypipes/ghw v0.25.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
-	github.com/knadh/koanf/v2 v2.3.5
+	github.com/knadh/koanf/v2 v2.3.6
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20260216052712-d6b71f5180c1
 	github.com/nezhahq/service v0.0.0-20250122132143-5f38afb105e9
 	github.com/prometheus-community/pro-bing v0.9.1
