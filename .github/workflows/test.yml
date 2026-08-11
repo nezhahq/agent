@@ -78,7 +78,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: nezhahq/nezha
-          ref: 8b352484d82266a8401dbaf04b6dd98b6e7f8e00
+          ref: 9ec6164f58185085abb8cade6e83f7c451d90c7f
           path: nezha
           persist-credentials: false
       - name: Set up Go
