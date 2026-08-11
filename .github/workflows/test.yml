@@ -27,10 +27,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@v7
         with:
           go-version: ^1.26.1
           cache: false
@@ -43,10 +43,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/setup-go@v7
         with:
           go-version: ^1.26.1
           cache: false
@@ -70,19 +70,18 @@ jobs:
     timeout-minutes: 75
     steps:
       - name: Checkout Agent revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@v7.0.1
         with:
           path: agent
           persist-credentials: false
-      - name: Checkout pinned Nezha revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Checkout Nezha repository
+        uses: actions/checkout@v7.0.1
         with:
           repository: nezhahq/nezha
-          ref: 9ec6164f58185085abb8cade6e83f7c451d90c7f
           path: nezha
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        uses: actions/setup-go@v7
         with:
           go-version: ^1.26.1
           cache: false
