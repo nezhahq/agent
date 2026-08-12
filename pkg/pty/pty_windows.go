@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"github.com/UserExistsError/conpty"
 )
@@ -13,7 +14,10 @@ import (
 var _ IPty = (*Pty)(nil)
 
 type Pty struct {
-	tty *conpty.ConPty
+	tty  *conpty.ConPty
+	mu   sync.RWMutex
+	cols uint32
+	rows uint32
 }
 
 func getExecutableFilePath() (string, error) {
@@ -33,8 +37,15 @@ func Start() (IPty, error) {
 	if err != nil {
 		return nil, err
 	}
-	tty, err := conpty.Start(shellPath, conpty.ConPtyWorkDir(path))
-	return &Pty{tty: tty}, err
+	tty, err := conpty.Start(
+		shellPath,
+		conpty.ConPtyWorkDir(path),
+		conpty.ConPtyDimensions(defaultTerminalCols, defaultTerminalRows),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &Pty{tty: tty, cols: defaultTerminalCols, rows: defaultTerminalRows}, nil
 }
 
 func (pty *Pty) Write(p []byte) (n int, err error) {
@@ -46,11 +57,19 @@ func (pty *Pty) Read(p []byte) (n int, err error) {
 }
 
 func (pty *Pty) Getsize() (uint16, uint16, error) {
-	return 80, 40, nil
+	pty.mu.RLock()
+	defer pty.mu.RUnlock()
+	return uint16(pty.cols), uint16(pty.rows), nil
 }
 
 func (pty *Pty) Setsize(cols, rows uint32) error {
-	return pty.tty.Resize(int(cols), int(rows))
+	pty.mu.Lock()
+	defer pty.mu.Unlock()
+	if err := pty.tty.Resize(int(cols), int(rows)); err != nil {
+		return err
+	}
+	pty.cols, pty.rows = cols, rows
+	return nil
 }
 
 func (pty *Pty) Close() error {

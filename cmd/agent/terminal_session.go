@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"time"
 
 	"github.com/nezhahq/agent/model"
@@ -13,6 +14,10 @@ import (
 const (
 	terminalKeepaliveInterval = 30 * time.Second
 	terminalShutdownTimeout   = 2 * time.Second
+	terminalMinCols           = 2
+	terminalMinRows           = 2
+	terminalMaxCols           = 1000
+	terminalMaxRows           = 500
 )
 
 type terminalWindowSize struct {
@@ -142,9 +147,14 @@ func (h terminalHandler) shutdownOwner(
 }
 
 func (s *terminalSession) producePTYOutput() error {
-	buffer := make([]byte, 10240)
+	buffer := make([]byte, 32*1024)
 	for {
 		read, err := s.tty.Read(buffer)
+		if read > 0 {
+			if sendErr := s.owner.Send(&pb.IOStreamData{Data: buffer[:read]}); sendErr != nil {
+				return sendErr
+			}
+		}
 		if err != nil {
 			if s.producerContext.Err() != nil {
 				return context.Cause(s.producerContext)
@@ -154,13 +164,28 @@ func (s *terminalSession) producePTYOutput() error {
 			}
 			return err
 		}
-		if read == 0 {
-			continue
+	}
+}
+
+func validTerminalWindowSize(size terminalWindowSize) bool {
+	return size.Cols >= terminalMinCols && size.Cols <= terminalMaxCols &&
+		size.Rows >= terminalMinRows && size.Rows <= terminalMaxRows
+}
+
+func writeTerminalInput(writer io.Writer, data []byte) error {
+	for len(data) > 0 {
+		written, err := writer.Write(data)
+		if written > 0 {
+			data = data[written:]
 		}
-		if err := s.owner.Send(&pb.IOStreamData{Data: buffer[:read]}); err != nil {
+		if err != nil {
 			return err
 		}
+		if written == 0 {
+			return io.ErrShortWrite
+		}
 	}
+	return nil
 }
 
 func (s *terminalSession) receiveInput() error {
@@ -174,11 +199,15 @@ func (s *terminalSession) receiveInput() error {
 		}
 		switch remoteData.GetData()[0] {
 		case 0:
-			_, _ = s.tty.Write(remoteData.GetData()[1:])
+			if err := writeTerminalInput(s.tty, remoteData.GetData()[1:]); err != nil {
+				return err
+			}
 		case 1:
 			var resize terminalWindowSize
-			if err := json.Unmarshal(remoteData.GetData()[1:], &resize); err == nil {
-				_ = s.tty.Setsize(resize.Cols, resize.Rows)
+			if err := json.Unmarshal(remoteData.GetData()[1:], &resize); err == nil && validTerminalWindowSize(resize) {
+				if err := s.tty.Setsize(resize.Cols, resize.Rows); err != nil {
+					return err
+				}
 			}
 		}
 	}

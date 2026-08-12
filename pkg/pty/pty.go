@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	opty "github.com/creack/pty"
@@ -36,9 +37,35 @@ func Start() (IPty, error) {
 		return nil, errors.New("没有可用终端")
 	}
 	cmd := exec.Command(shellPath) // #nosec
-	cmd.Env = append(os.Environ(), "TERM=xterm")
-	tty, err := opty.Start(cmd)
-	return &Pty{tty: tty, cmd: cmd}, err
+	cmd.Env = terminalEnvironment(os.Environ())
+	tty, err := opty.StartWithSize(cmd, &opty.Winsize{
+		Cols: defaultTerminalCols,
+		Rows: defaultTerminalRows,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Pty{tty: tty, cmd: cmd}, nil
+}
+
+func terminalEnvironment(base []string) []string {
+	overrides := map[string]string{
+		"TERM":         "xterm-256color",
+		"COLORTERM":    "truecolor",
+		"TERM_PROGRAM": "Nezha",
+	}
+	environment := make([]string, 0, len(base)+len(overrides))
+	for _, item := range base {
+		key, _, found := strings.Cut(item, "=")
+		if _, overridden := overrides[key]; found && overridden {
+			continue
+		}
+		environment = append(environment, item)
+	}
+	for _, key := range []string{"TERM", "COLORTERM", "TERM_PROGRAM"} {
+		environment = append(environment, key+"="+overrides[key])
+	}
+	return environment
 }
 
 func (pty *Pty) Write(p []byte) (n int, err error) {

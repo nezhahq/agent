@@ -1,5 +1,10 @@
 package pty
 
+const (
+	defaultTerminalCols = 80
+	defaultTerminalRows = 24
+)
+
 type IPty interface {
 	Write(p []byte) (n int, err error)
 	Read(p []byte) (n int, err error)
