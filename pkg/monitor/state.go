@@ -63,7 +63,19 @@ func GetState(config *model.AgentConfig, skipConnectionCount bool, skipProcsCoun
 		temperatureLock.RUnlock()
 	}
 	if config != nil && config.GPU {
-		result.GPU = tryStat(context.Background(), GPU, gpuStateProbe)
+		// One collection feeds both fields: GPU stays populated for dashboards
+		// that predate GPUs.
+		stats := tryStat(context.Background(), GPU, gpuStatProbe)
+		result.GPU = make([]float64, len(stats))
+		result.GPUs = make([]model.GPUStat, len(stats))
+		for i, g := range stats {
+			result.GPU[i] = g.Utilization
+			result.GPUs[i] = model.GPUStat{
+				Utilization: g.Utilization,
+				MemoryUsed:  g.MemoryUsed,
+				MemoryTotal: g.MemoryTotal,
+			}
+		}
 	}
 
 	metricLock.RLock()

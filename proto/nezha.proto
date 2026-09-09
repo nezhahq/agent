@@ -44,6 +44,16 @@ message State {
   uint64 process_count = 15;
   repeated State_SensorTemperature temperatures = 16;
   repeated double gpu = 17;
+  repeated State_GPU gpus = 18;
+}
+
+// State_GPU carries per-card figures. Index-aligned with Host.gpu, matching
+// the existing `gpu` field it supersedes; that field stays populated so older
+// dashboards keep working.
+message State_GPU {
+  double utilization = 1;
+  uint64 memory_used = 2;
+  uint64 memory_total = 3;
 }
 
 message State_SensorTemperature {

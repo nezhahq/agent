@@ -27,6 +27,15 @@ type HostState struct {
 	ProcessCount   uint64
 	Temperatures   []SensorTemperature
 	GPU            []float64
+	GPUs           []GPUStat
+}
+
+// GPUStat carries per-card figures. Memory is in MiB and stays zero on
+// vendors that do not report it, so MemoryTotal == 0 means "unknown".
+type GPUStat struct {
+	Utilization float64
+	MemoryUsed  uint64
+	MemoryTotal uint64
 }
 
 func (s *HostState) PB() *pb.State {
@@ -35,6 +44,15 @@ func (s *HostState) PB() *pb.State {
 		ts = append(ts, &pb.State_SensorTemperature{
 			Name:        t.Name,
 			Temperature: t.Temperature,
+		})
+	}
+
+	gs := make([]*pb.State_GPU, 0, len(s.GPUs))
+	for _, g := range s.GPUs {
+		gs = append(gs, &pb.State_GPU{
+			Utilization: g.Utilization,
+			MemoryUsed:  g.MemoryUsed,
+			MemoryTotal: g.MemoryTotal,
 		})
 	}
 
@@ -56,6 +74,7 @@ func (s *HostState) PB() *pb.State {
 		ProcessCount:   s.ProcessCount,
 		Temperatures:   ts,
 		Gpu:            s.GPU,
+		Gpus:           gs,
 	}
 }
 

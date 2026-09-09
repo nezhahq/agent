@@ -31,6 +31,38 @@ func (smi *NvidiaSMI) GatherUsage() ([]float64, error) {
 	return smi.gatherUsage()
 }
 
+// GatherStat reports utilization together with frame buffer usage. Both come
+// from the same `nvidia-smi -q -x` output already collected for GatherUsage,
+// so this costs no additional invocation.
+func (smi *NvidiaSMI) GatherStat() ([]GPUStat, error) {
+	var s smistat
+	if err := xml.Unmarshal(smi.data, &s); err != nil {
+		return nil, err
+	}
+	stats := make([]GPUStat, 0, len(s.GPUs))
+	for _, g := range s.GPUs {
+		util, _ := parsePercentage(g.Utilization.GpuUtil)
+		used, errUsed := parseMiB(g.FbMemory.Used)
+		total, errTotal := parseMiB(g.FbMemory.Total)
+		stat := GPUStat{Utilization: util}
+		if errUsed == nil && errTotal == nil {
+			stat.MemoryUsed, stat.MemoryTotal = used, total
+		}
+		stats = append(stats, stat)
+	}
+	return stats, nil
+}
+
+// parseMiB turns a "1137 MiB" reading into its numeric value.
+func parseMiB(v string) (uint64, error) {
+	t := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "MiB"))
+	n, err := strconv.ParseFloat(t, 64)
+	if err != nil || n < 0 {
+		return 0, err
+	}
+	return uint64(n), nil
+}
+
 func (smi *NvidiaSMI) Start() error {
 	nvidiaSmiOnce.Do(func() {
 		if _, err := os.Stat(smi.BinPath); err == nil {
@@ -114,6 +146,10 @@ type gpu struct {
 	Utilization struct {
 		GpuUtil string `xml:"gpu_util"`
 	} `xml:"utilization"`
+	FbMemory struct {
+		Total string `xml:"total"`
+		Used  string `xml:"used"`
+	} `xml:"fb_memory_usage"`
 }
 type smistat struct {
 	GPUs []gpu `xml:"gpu"`
