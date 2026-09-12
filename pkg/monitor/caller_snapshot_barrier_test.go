@@ -14,6 +14,7 @@ import (
 
 	"github.com/nezhahq/agent/model"
 	"github.com/nezhahq/agent/pkg/monitor/disk"
+	"github.com/nezhahq/agent/pkg/monitor/gpu/vendor"
 	"github.com/nezhahq/agent/pkg/monitor/nic"
 )
 
@@ -53,7 +54,7 @@ func TestMonitorSnapshotObservationRejectsMissingDiskAndIPProbes(t *testing.T) {
 	observation := &monitorSnapshotObservation{
 		nicAllowlists:    []map[string]bool{{"nic-a": true}},
 		gpuHostCalls:     1,
-		gpuStateCalls:    1,
+		gpuStatCalls:     1,
 		temperatureCalls: 1,
 		temperatureDone:  make(chan struct{}, 1),
 	}
@@ -74,7 +75,7 @@ type monitorSnapshotObservation struct {
 	diskAllowlists     [][]string
 	customEndpointSets [][]string
 	gpuHostCalls       int
-	gpuStateCalls      int
+	gpuStatCalls       int
 	temperatureCalls   int
 	barrierCalls       int
 	temperatureStarted bool
@@ -118,11 +119,11 @@ func installMonitorSnapshotProbeBarrier(t *testing.T, snapshotA *model.AgentConf
 		observation.mu.Unlock()
 		return []string{"gpu-a"}, nil
 	}
-	gpuStateProbe = func(context.Context) ([]float64, error) {
+	gpuStatProbe = func(context.Context) ([]vendor.GPUStat, error) {
 		observation.mu.Lock()
-		observation.gpuStateCalls++
+		observation.gpuStatCalls++
 		observation.mu.Unlock()
-		return []float64{25}, nil
+		return []vendor.GPUStat{{Utilization: 25}}, nil
 	}
 	temperatureProbe = func(context.Context) ([]model.SensorTemperature, error) {
 		observation.mu.Lock()
@@ -220,8 +221,8 @@ func (o *monitorSnapshotObservation) validateGenerationA(snapshotA *model.AgentC
 			return fmt.Errorf("custom endpoints = %v, want generation A %v", endpoints, snapshotA.CustomIPApi)
 		}
 	}
-	if o.gpuHostCalls != 1 || o.gpuStateCalls != 1 || o.temperatureCalls != 1 {
-		return fmt.Errorf("generation A feature probes = gpuHost:%d gpuState:%d temperature:%d, want 1 each", o.gpuHostCalls, o.gpuStateCalls, o.temperatureCalls)
+	if o.gpuHostCalls != 1 || o.gpuStatCalls != 1 || o.temperatureCalls != 1 {
+		return fmt.Errorf("generation A feature probes = gpuHost:%d gpuStat:%d temperature:%d, want 1 each", o.gpuHostCalls, o.gpuStatCalls, o.temperatureCalls)
 	}
 	return nil
 }
