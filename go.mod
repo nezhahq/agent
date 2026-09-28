@@ -11,11 +11,11 @@ require (
 	github.com/dean2021/goss v0.0.0-20230129073947-df90431348f1
 	github.com/ebitengine/purego v0.11.1
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/hashicorp/go-uuid v1.0.3
+	github.com/hashicorp/go-uuid v1.0.4
 	github.com/jaypipes/ghw v0.25.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
-	github.com/knadh/koanf/v2 v2.3.6
+	github.com/knadh/koanf/v2 v2.3.7
 	github.com/nezhahq/go-github-selfupdate v0.0.0-20260216052712-d6b71f5180c1
 	github.com/nezhahq/service v0.0.0-20250122132143-5f38afb105e9
 	github.com/prometheus-community/pro-bing v0.9.1
