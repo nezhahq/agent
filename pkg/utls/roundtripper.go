@@ -68,6 +68,9 @@ type pendingConnKey struct {
 	dest string
 }
 
+// tlsDialTimeout 限定“建立 TCP 连接 + 完成 TLS 握手”的总时长。
+var tlsDialTimeout = 20 * time.Second
+
 var (
 	errEAGAIN        = errors.New("incorrect ALPN negotiated, try again with another ALPN")
 	errEAGAINTooMany = errors.New("incorrect ALPN negotiated")
@@ -203,6 +206,12 @@ func (r *uTLSHTTPRoundTripperImpl) dialTLS(ctx context.Context, addr string) (*u
 		dialer = proxyDialer.(proxy.ContextDialer)
 	}
 
+	// 这个函数是在 accessDialingConnection 锁内被调用的，而这把锁所有 HTTPS 探测共用。
+	// 握手必须有期限：对端接受了 TCP 连接却不回 ServerHello 时，没有期限的握手会永远
+	// 占着锁，之后所有 HTTPS 探测都排在它后面，直到进程重启。
+	ctx, cancel := context.WithTimeout(ctx, tlsDialTimeout)
+	defer cancel()
+
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
@@ -216,8 +225,10 @@ func (r *uTLSHTTPRoundTripperImpl) dialTLS(ctx context.Context, addr string) (*u
 		}
 	}
 
-	err = uconn.Handshake()
+	err = uconn.HandshakeContext(ctx)
 	if err != nil {
+		// 握手失败的连接必须关闭，否则每次失败的探测都泄漏一个文件描述符。
+		uconn.Close()
 		return nil, err
 	}
 	return uconn, nil

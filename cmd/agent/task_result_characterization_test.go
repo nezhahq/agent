@@ -39,6 +39,8 @@ func TestDispatchAgentTaskRunsPlainApplyConfigSynchronously(t *testing.T) {
 		clearReloadTimer()
 	}()
 	setTestRuntimeConfig(model.AgentConfig{
+		Server:       "dashboard.example:5555",
+		UUID:         "00000000-0000-0000-0000-000000000001",
 		ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		TLS:          true,
 	})

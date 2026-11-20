@@ -33,7 +33,7 @@ func unmarshalResult(t *testing.T, r *pb.TaskResult, out any) {
 
 func TestExec_BasicOK(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("skip on windows; use ConPTY-aware tests instead")
+		t.Skip("uses a POSIX shell command; exec on Windows has no automated coverage yet")
 	}
 	req := model.ExecRequest{Cmd: "sh", Args: []string{"-c", "echo hello"}}
 	body, _ := json.Marshal(req)

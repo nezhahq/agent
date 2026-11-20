@@ -4,9 +4,11 @@ package vendor
 // Original License: MIT
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/tidwall/gjson"
 )
@@ -38,11 +40,15 @@ func (rsmi *ROCmSMI) Start() error {
 }
 
 func (rsmi *ROCmSMI) pollROCmSMI() []byte {
-	cmd := exec.Command(rsmi.BinPath,
+	// 与 nvidia-smi 相同：采集发生在监控的状态锁内，工具卡住不能拖住状态上报。
+	ctx, cancel := context.WithTimeout(context.Background(), gpuToolTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, rsmi.BinPath,
 		"-u",
 		"--showproductname",
 		"--json",
 	)
+	cmd.WaitDelay = time.Second
 	gs, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil

@@ -144,18 +144,21 @@ func ValidateConfig(c *AgentConfig, isRemoteEdit bool) error {
 		}
 	}
 
-	if !isRemoteEdit {
-		if c.Server == "" {
-			return errors.New("server address should not be empty")
-		}
+	// 远程下发的配置同样要检查连接三要素。调用方是把下发内容叠加在当前配置上再来校验的，
+	// 没带的字段保持原值，所以这里只会拦下“显式把它们改成空或非法值”的推送——
+	// 这种配置一旦落盘，agent 就再也连不回面板，也没法再远程改回来。
+	// isRemoteEdit 目前不再影响校验，参数保留是为了不改调用方。
+	_ = isRemoteEdit
+	if c.Server == "" {
+		return errors.New("server address should not be empty")
+	}
 
-		if c.ClientSecret == "" {
-			return errors.New("client_secret must be specified")
-		}
+	if c.ClientSecret == "" {
+		return errors.New("client_secret must be specified")
+	}
 
-		if _, err := uuid.ParseUUID(c.UUID); err != nil {
-			return err
-		}
+	if _, err := uuid.ParseUUID(c.UUID); err != nil {
+		return err
 	}
 
 	return nil

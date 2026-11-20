@@ -4,6 +4,7 @@ package vendor
 // Original License: MIT
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"os"
@@ -11,12 +12,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
 	nvidiaSmiPath string
 	nvidiaSmiOnce sync.Once
 )
+
+// gpuToolTimeout 限定一次厂商工具调用（nvidia-smi、rocm-smi）的最长执行时间。
+var gpuToolTimeout = 10 * time.Second
 
 type NvidiaSMI struct {
 	BinPath string
@@ -84,10 +89,16 @@ func (smi *NvidiaSMI) Start() error {
 }
 
 func (smi *NvidiaSMI) pollNvidiaSMI() []byte {
-	cmd := exec.Command(smi.BinPath,
+	// GPU 数据是在监控的状态锁内采集的：工具卡住（驱动异常时很常见）会让整个
+	// 状态上报停摆，所以必须限时。
+	ctx, cancel := context.WithTimeout(context.Background(), gpuToolTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, smi.BinPath,
 		"-q",
 		"-x",
 	)
+	// 超时后子进程即使还占着输出管道，也不再等它。
+	cmd.WaitDelay = time.Second
 	gs, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil

@@ -52,7 +52,7 @@ func TestHandleApplyConfigTaskSupersedesPendingReload(t *testing.T) {
 		clearReloadTimer()
 	}()
 
-	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true})
+	setTestRuntimeConfig(model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true})
 
 	first := &pb.Task{Id: 1, Data: `{"client_secret":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}`}
 	firstResult := &pb.TaskResult{}
@@ -87,7 +87,7 @@ func TestHandleApplyConfigTaskPlainPushDoesNotSupersedeTransferReload(t *testing
 		clearReloadTimer()
 	}()
 
-	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true})
+	setTestRuntimeConfig(model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true})
 
 	transfer := &pb.Task{Id: 42, Data: `{"client_secret":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}`}
 	transferResult := &pb.TaskResult{}
@@ -216,7 +216,7 @@ func TestDispatchAgentTaskRunsApplyConfigSynchronously(t *testing.T) {
 		clearReloadTimer()
 	}()
 
-	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true})
+	setTestRuntimeConfig(model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true})
 
 	task := &pb.Task{Id: 1, Type: model.TaskTypeServerTransferApply, Data: `{"client_secret":"Abcdef0123456789ABCDEFGHIJklmnop"}`}
 	sentResults := make(chan *pb.TaskResult, 1)
@@ -364,7 +364,7 @@ func TestHandleApplyConfigTaskRejectsMalformedClientSecret(t *testing.T) {
 				agentConfig = originalConfig
 				clearReloadTimer()
 			}()
-			setTestRuntimeConfig(model.AgentConfig{ClientSecret: "current-known-good-32-char-secretX", TLS: true})
+			setTestRuntimeConfig(model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "current-known-good-32-char-secretX", TLS: true})
 
 			task := &pb.Task{Id: 1, Data: tc.payload}
 			result := &pb.TaskResult{}
@@ -392,7 +392,7 @@ func TestHandleApplyConfigTaskAcceptsWellFormedClientSecret(t *testing.T) {
 		agentConfig = originalConfig
 		clearReloadTimer()
 	}()
-	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "current-known-good-32-char-secretX", TLS: true})
+	setTestRuntimeConfig(model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "current-known-good-32-char-secretX", TLS: true})
 
 	task := &pb.Task{Id: 1, Data: `{"client_secret":"AbcdEfghIjklMnopQrstUvwxYz012345"}`}
 	result := &pb.TaskResult{}
@@ -420,22 +420,22 @@ func TestHandleServerTransferApplyTaskRefusesRotationToInsecureTransport(t *test
 	}{
 		{
 			"already_plain",
-			model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: false, InsecureTLS: false},
+			model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: false, InsecureTLS: false},
 			`{"client_secret":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}`,
 		},
 		{
 			"already_insecure_tls",
-			model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true, InsecureTLS: true},
+			model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true, InsecureTLS: true},
 			`{"client_secret":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}`,
 		},
 		{
 			"downgrade_tls_in_payload",
-			model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true, InsecureTLS: false},
+			model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true, InsecureTLS: false},
 			`{"client_secret":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","tls":false}`,
 		},
 		{
 			"enable_insecure_tls_in_payload",
-			model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true, InsecureTLS: false},
+			model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: true, InsecureTLS: false},
 			`{"client_secret":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","insecure_tls":true}`,
 		},
 	}
@@ -475,7 +475,7 @@ func TestHandleApplyConfigTaskAllowsNonRotationConfigOnInsecureTransport(t *test
 		agentConfig = originalConfig
 		clearReloadTimer()
 	}()
-	setTestRuntimeConfig(model.AgentConfig{ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: false})
+	setTestRuntimeConfig(model.AgentConfig{Server: "dashboard.example:5555", UUID: "00000000-0000-0000-0000-000000000001", ClientSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", TLS: false})
 
 	task := &pb.Task{Id: 0, Data: `{"debug":true}`}
 	result := &pb.TaskResult{}
