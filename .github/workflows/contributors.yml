@@ -4,12 +4,17 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   contributors:
     runs-on: ubuntu-latest
     steps:
       - name: Generate Contributors Images
-        uses: jaywcjlove/github-action-contributors@main
+        # 第三方 action 固定到提交 SHA：下一步会把 NAIBA_PAT 交给同一作者的 action，
+        # 按可变分支引用时，上游仓库被攻陷就等于交出推代码、打 tag 的权限。
+        uses: jaywcjlove/github-action-contributors@86707f6d4c2469ce6b46bc3367253ebd41ee242c # main
         id: contributors
         with:
           filter-author: (renovate\[bot\]|renovate-bot|dependabot\[bot\])
@@ -19,7 +24,7 @@ jobs:
           avatarMargin: 8
 
       - name: Modify htmlTable README.md
-        uses: jaywcjlove/github-action-modify-file-content@main
+        uses: jaywcjlove/github-action-modify-file-content@0e3b8d492a44de3769f2f24af63a5dca7eb39559 # main
         with:
           message: update contributors[no ci]
           token: ${{ secrets.NAIBA_PAT }}

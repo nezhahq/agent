@@ -13,20 +13,30 @@ import (
 	pb "github.com/nezhahq/agent/proto"
 )
 
+var currentUserHomeDir = func() (string, error) {
+	usr, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return usr.HomeDir, nil
+}
+
 func (t *Task) listDir(dir string) error {
 	var entries []fs.DirEntry
 	var err error
-	for {
+	entries, err = os.ReadDir(dir)
+	if err != nil {
+		// 回退到主目录只能尝试一次：服务账号的主目录常常不存在或不可读
+		// （例如 /nonexistent），循环重试会让这个协程永久空转占满一个 CPU。
+		homeDir, userErr := currentUserHomeDir()
+		if userErr != nil {
+			return t.sender.Send(&pb.IOStreamData{Data: CreateErr(userErr)})
+		}
+		dir = homeDir + string(filepath.Separator)
 		entries, err = os.ReadDir(dir)
 		if err != nil {
-			usr, userErr := user.Current()
-			if userErr != nil {
-				return t.sender.Send(&pb.IOStreamData{Data: CreateErr(userErr)})
-			}
-			dir = usr.HomeDir + string(filepath.Separator)
-			continue
+			return t.sender.Send(&pb.IOStreamData{Data: CreateErr(err)})
 		}
-		break
 	}
 	var buffer bytes.Buffer
 	data := Create(&buffer, dir)

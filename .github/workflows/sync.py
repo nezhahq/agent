@@ -4,6 +4,34 @@ import requests
 import hashlib
 from github import Github
 
+MAX_DOWNLOAD_ATTEMPTS = 3
+
+
+# 镜像站是国内 agent 自更新的下载源：没有通过校验的文件绝不能同步过去。
+# 旧实现在校验失败后递归重下，返回后外层仍会带着未校验的文件继续上传。
+def download_verified_assets(release):
+    for attempt in range(1, MAX_DOWNLOAD_ATTEMPTS + 1):
+        files = []
+        downloaded_all = True
+        for asset in release.get_assets():
+            name = asset.name
+            response = requests.get(asset.browser_download_url)
+            if response.status_code == 200:
+                with open(name, 'wb') as f:
+                    f.write(response.content)
+                print(f"Downloaded {name}")
+            else:
+                print(f"Failed to download {name}: HTTP {response.status_code}")
+                downloaded_all = False
+            files.append(get_abs_path(name))
+
+        print('Checking file integrities')
+        if downloaded_all and verify_checksum(get_abs_path("checksums.txt")):
+            return files
+        print(f"Download attempt {attempt} of {MAX_DOWNLOAD_ATTEMPTS} did not verify")
+
+    raise SystemExit("Release assets failed checksum verification, nothing was synced.")
+
 
 def get_github_latest_release():
     g = Github()
@@ -12,22 +40,7 @@ def get_github_latest_release():
     if release:
         print(f"Latest release tag is: {release.tag_name}")
         print(f"Latest release info is: {release.body}")
-        files = []
-        for asset in release.get_assets():
-            url = asset.browser_download_url
-            name = asset.name
-
-            response = requests.get(url)
-            if response.status_code == 200:
-                with open(name, 'wb') as f:
-                    f.write(response.content)
-                print(f"Downloaded {name}")
-            else:
-                print(f"Failed to download {name}")
-            file_abs_path = get_abs_path(asset.name)
-            files.append(file_abs_path)
-        print('Checking file integrities')
-        verify_checksum(get_abs_path("checksums.txt"))
+        files = download_verified_assets(release)
         sync_to_gitee(release.tag_name, release.body, files)
     else:
         print("No releases found.")
@@ -158,21 +171,32 @@ def compute_sha256(file: str):
 
 
 def verify_checksum(checksum_file: str):
+    if not os.path.exists(checksum_file):
+        print("checksums.txt is missing")
+        return False
+
     with open(checksum_file, 'r') as f:
-        lines = f.readlines()
+        lines = [line for line in f.readlines() if line.strip()]
+
+    if not lines:
+        print("checksums.txt is empty")
+        return False
 
     for line in lines:
         checksum, file = line.strip().split()
         abs_path = get_abs_path(file)
+        if not os.path.exists(abs_path):
+            print(f"{file}: FAIL (not downloaded)")
+            return False
         computed_hash = compute_sha256(abs_path)
 
         if checksum == computed_hash:
             print(f"{file}: OK")
         else:
             print(f"{file}: FAIL (expected {checksum}, got {computed_hash})")
-            print("Will run the download process again")
-            get_github_latest_release()
-            break
+            return False
+    return True
 
 
-get_github_latest_release()
+if __name__ == "__main__":
+    get_github_latest_release()

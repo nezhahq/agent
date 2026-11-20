@@ -8,8 +8,10 @@ import (
 )
 
 func TestLookupIP(t *testing.T) {
-	if ci := os.Getenv("CI"); ci != "" { // skip if test on CI
-		return
+	// 必须用 t.Skip 而不是直接 return：直接返回会让这个依赖外网 DNS 的用例
+	// 在 CI 上显示为“通过”，看起来像是被覆盖了。
+	if ci := os.Getenv("CI"); ci != "" {
+		t.Skip("requires public DNS, which CI runners do not guarantee")
 	}
 
 	ip, err := lookupIP("www.google.com")

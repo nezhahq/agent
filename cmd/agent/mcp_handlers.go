@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -362,14 +361,10 @@ func handleFsWriteTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *
 		}
 	}
 
-	mode := os.FileMode(0o644)
-	if req.Mode != "" {
-		parsed, err := strconv.ParseUint(req.Mode, 8, 32)
-		if err != nil {
-			mcpReply(result, model.FsWriteResult{Error: "invalid mode: " + err.Error()})
-			return
-		}
-		mode = os.FileMode(parsed) & os.ModePerm
+	mode, replacedFile, err := resolveReplacementMode(clean, req.Mode)
+	if err != nil {
+		mcpReply(result, model.FsWriteResult{Error: "invalid mode: " + err.Error()})
+		return
 	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(clean), ".mcp-write-*")
@@ -385,6 +380,7 @@ func handleFsWriteTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *
 		mcpReply(result, model.FsWriteResult{Error: fsErrMsg(err)})
 		return
 	}
+	keepReplacedFileOwner(tmp, replacedFile)
 	if err := tmp.Chmod(mode); err != nil {
 		_ = tmp.Close()
 		cleanupTmp()

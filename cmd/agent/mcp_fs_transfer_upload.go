@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/nezhahq/agent/model"
 )
@@ -42,14 +41,10 @@ func fsTransferUpload(stream fsTransferStream, req *model.FsTransferRequest) {
 			return
 		}
 	}
-	mode := os.FileMode(0o644)
-	if req.Mode != "" {
-		parsed, modeErr := strconv.ParseUint(req.Mode, 8, 32)
-		if modeErr != nil {
-			sendXferErr(stream, "invalid mode: "+modeErr.Error())
-			return
-		}
-		mode = os.FileMode(parsed) & os.ModePerm
+	mode, replacedFile, modeErr := resolveReplacementMode(clean, req.Mode)
+	if modeErr != nil {
+		sendXferErr(stream, "invalid mode: "+modeErr.Error())
+		return
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(clean), mcpFsTransferTempPrefix+"*")
 	if err != nil {
@@ -86,6 +81,7 @@ func fsTransferUpload(stream fsTransferStream, req *model.FsTransferRequest) {
 			return
 		}
 	}
+	keepReplacedFileOwner(tmp, replacedFile)
 	if chmodErr := tmp.Chmod(mode); chmodErr != nil {
 		_ = tmp.Close()
 		cleanup()

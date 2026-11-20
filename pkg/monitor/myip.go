@@ -14,6 +14,8 @@ import (
 	pb "github.com/nezhahq/agent/proto"
 )
 
+const geoIPResponseBodyLimit = 64 * 1024
+
 var (
 	cfList = []string{
 		"https://blog.cloudflare.com/cdn-cgi/trace",
@@ -140,11 +142,13 @@ func fetchIP(servers []string, isV6 bool) string {
 			return ip
 		}
 		if err == nil {
-			body, err := io.ReadAll(resp.Body)
+			// 读失败也必须关闭 body，否则连接不会归还连接池；同时限制读取量，
+			// 这些第三方端点返回的只是一个 IP 或几行 trace 文本。
+			body, err := io.ReadAll(io.LimitReader(resp.Body, geoIPResponseBodyLimit))
+			resp.Body.Close()
 			if err != nil {
 				continue
 			}
-			resp.Body.Close()
 
 			bodyStr := string(body)
 			var newIP string

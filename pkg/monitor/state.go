@@ -42,10 +42,13 @@ func GetState(config *model.AgentConfig, skipConnectionCount bool, skipProcsCoun
 	}
 
 	result.DiskUsed = getDiskUsed(config)
-	loadState := tryStat(context.Background(), Load, loadStateProbe)
-	result.Load1 = loadState.Load1
-	result.Load5 = loadState.Load5
-	result.Load15 = loadState.Load15
+	// tryStat 在探针失败（或连续失败后被停用）时返回零值，这里的零值是 nil 指针：
+	// 不判空会让状态上报协程 panic，整个 agent 随之退出。
+	if loadState := tryStat(context.Background(), Load, loadStateProbe); loadState != nil {
+		result.Load1 = loadState.Load1
+		result.Load5 = loadState.Load5
+		result.Load15 = loadState.Load15
+	}
 
 	if !skipProcsCount {
 		processIDs, err := processIDsProbe()

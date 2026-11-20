@@ -777,6 +777,8 @@ func handleHttpGetTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *
 	}
 }
 
+var commandTaskTimeout = 2 * time.Hour
+
 func handleCommandTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *pb.TaskResult) {
 	if gates.disableCommandExecute {
 		result.Data = "此 Agent 已禁止命令执行"
@@ -790,7 +792,7 @@ func handleCommandTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *
 		result.Data = err.Error()
 		return
 	}
-	timeout := time.NewTimer(time.Hour * 2)
+	timeout := time.NewTimer(commandTaskTimeout)
 	cmd := processgroup.NewCommand(task.GetData())
 	var b bytes.Buffer
 	cmd.Stdout = &b
@@ -804,26 +806,36 @@ func handleCommandTaskWithConfig(gates taskFeatureGates, task *pb.Task, result *
 		return
 	}
 	pg.AddProcess(cmd)
+	// 超时协程只允许置标志位、终止进程组，不能碰 result：result 由本协程写入，
+	// 两边同时写 result.Data（以及并发调用 pg.Dispose）都是数据竞争。
+	var timedOut atomic.Bool
+	watcherDone := make(chan struct{})
 	go func() {
+		defer close(watcherDone)
 		select {
 		case <-timeout.C:
-			result.Data = "任务执行超时\n"
+			timedOut.Store(true)
 			pg.Dispose()
 		case <-endCh:
 			timeout.Stop()
 		}
 	}()
-	if err = cmd.Wait(); err != nil {
-		result.Data += fmt.Sprintf("%s\n%s", b.String(), err.Error())
-	} else {
-		result.Data = b.String()
-		result.Successful = true
-	}
+	err = cmd.Wait()
 	// Always signal completion so the timeout goroutine exits and stops the
 	// timer, regardless of whether the command succeeded or failed. The
 	// previous code only closed endCh on success, stranding one goroutine and
 	// one 2h timer for every non-zero-exit command.
 	close(endCh)
+	<-watcherDone
+	if err != nil {
+		if timedOut.Load() {
+			result.Data = "任务执行超时\n"
+		}
+		result.Data += fmt.Sprintf("%s\n%s", b.String(), err.Error())
+	} else {
+		result.Data = b.String()
+		result.Successful = true
+	}
 	pg.Dispose()
 	result.Delay = float32(time.Since(startedAt).Seconds())
 }
