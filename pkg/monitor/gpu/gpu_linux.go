@@ -4,6 +4,7 @@ package gpu
 
 import (
 	"context"
+	"sync"
 
 	"github.com/nezhahq/agent/pkg/monitor/gpu/vendor"
 )
@@ -14,7 +15,19 @@ const (
 	vendorIntel
 )
 
-var vendorType = getVendor()
+// 厂商探测要运行 nvidia-smi / rocm-smi，必须推迟到第一次真正采集 GPU 时再做。
+// 以前放在包初始化里：驱动异常、工具卡死的机器上，agent 启动甚至只是执行 -v
+// 都要先等满工具超时，即使配置里根本没开 GPU 监控。
+var (
+	detectVendorOnce sync.Once
+	detectedVendor   uint8
+	probeVendor      = getVendor
+)
+
+func vendorType() uint8 {
+	detectVendorOnce.Do(func() { detectedVendor = probeVendor() })
+	return detectedVendor
+}
 
 func getVendor() uint8 {
 	// Check NVIDIA first (most common discrete GPU)
@@ -134,7 +147,7 @@ func GetHost(_ context.Context) ([]string, error) {
 	var gi []string
 	var err error
 
-	switch vendorType {
+	switch vendorType() {
 	case vendorAMD:
 		gi, err = getAMDHost()
 	case vendorNVIDIA:
@@ -156,7 +169,7 @@ func GetState(_ context.Context) ([]float64, error) {
 	var gs []float64
 	var err error
 
-	switch vendorType {
+	switch vendorType() {
 	case vendorAMD:
 		gs, err = getAMDStat()
 	case vendorNVIDIA:

@@ -3,6 +3,7 @@ package utls
 import (
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -80,4 +81,44 @@ func TestRoundTrip_StalledHandshakeDoesNotBlockLaterRequests(t *testing.T) {
 	if err := roundTripWithin(t, transport, "https://"+stalledTLSServer(t)+"/", 5*time.Second); err == nil {
 		t.Fatal("second request to a stalled peer succeeded")
 	}
+}
+
+// With the deadline in place a stalled peer still held the shared lock for the
+// whole handshake timeout, so every other HTTPS probe queued behind it for 20
+// seconds per round. A healthy target must be reached while another handshake
+// is still hanging.
+func TestRoundTrip_HealthyTargetIsNotQueuedBehindStalledHandshake(t *testing.T) {
+	originalTimeout := tlsDialTimeout
+	t.Cleanup(func() { tlsDialTimeout = originalTimeout })
+	tlsDialTimeout = 4 * time.Second
+
+	healthy := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	t.Cleanup(healthy.Close)
+	transport := NewUTLSHTTPRoundTripperWithProxy(utls.HelloChrome_Auto, &utls.Config{InsecureSkipVerify: true}, http.DefaultTransport, nil, http.Header{})
+
+	stalledRequest, err := http.NewRequest(http.MethodGet, "https://"+stalledTLSServer(t)+"/", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	stalledFinished := make(chan struct{})
+	go func() {
+		defer close(stalledFinished)
+		if response, err := transport.RoundTrip(stalledRequest); err == nil {
+			response.Body.Close()
+		}
+	}()
+	t.Cleanup(func() { <-stalledFinished })
+	// Give the stalled dial time to be in its handshake.
+	time.Sleep(300 * time.Millisecond)
+
+	started := time.Now()
+	if err := roundTripWithin(t, transport, healthy.URL, 2*time.Second); err != nil {
+		t.Fatalf("request to the healthy target failed: %v", err)
+	}
+	select {
+	case <-stalledFinished:
+		t.Fatal("test setup: the stalled handshake ended before the healthy request was measured")
+	default:
+	}
+	t.Logf("healthy target answered in %s while another handshake was hanging", time.Since(started))
 }

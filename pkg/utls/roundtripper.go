@@ -146,15 +146,19 @@ func (r *uTLSHTTPRoundTripperImpl) getConn(addr string, alpnIsH2 bool) net.Conn 
 }
 
 func (r *uTLSHTTPRoundTripperImpl) dialOrGetTLSWithExpectedALPN(ctx context.Context, addr string, expectedH2 bool) (net.Conn, error) {
+	// accessDialingConnection 只保护连接缓存（pendingConn），不能包住拨号和握手。
+	// 这把锁所有 HTTPS 探测共用：握手期间一直持锁的话，一个接受了 TCP 却不回
+	// ServerHello 的目标会让其余探测每轮都排在它后面等满握手超时，健康站点被拖成超时。
 	r.accessDialingConnection.Lock()
-	defer r.accessDialingConnection.Unlock()
-
 	if r.getShouldConnectWithH1(addr) == expectedH2 {
+		r.accessDialingConnection.Unlock()
 		return nil, errEAGAIN
 	}
 
 	//Get a cached connection if possible to reduce preflight connection closed without sending data
-	if gconn := r.getConn(addr, expectedH2); gconn != nil {
+	gconn := r.getConn(addr, expectedH2)
+	r.accessDialingConnection.Unlock()
+	if gconn != nil {
 		return gconn, nil
 	}
 
@@ -171,7 +175,9 @@ func (r *uTLSHTTPRoundTripperImpl) dialOrGetTLSWithExpectedALPN(ctx context.Cont
 		return conn, err
 	}
 
+	r.accessDialingConnection.Lock()
 	r.putConn(addr, protocolIsH2, conn)
+	r.accessDialingConnection.Unlock()
 
 	if protocolIsH2 {
 		r.clearShouldConnectWithH1(addr)
@@ -206,9 +212,8 @@ func (r *uTLSHTTPRoundTripperImpl) dialTLS(ctx context.Context, addr string) (*u
 		dialer = proxyDialer.(proxy.ContextDialer)
 	}
 
-	// 这个函数是在 accessDialingConnection 锁内被调用的，而这把锁所有 HTTPS 探测共用。
-	// 握手必须有期限：对端接受了 TCP 连接却不回 ServerHello 时，没有期限的握手会永远
-	// 占着锁，之后所有 HTTPS 探测都排在它后面，直到进程重启。
+	// 握手必须有期限：对端接受了 TCP 连接却不回 ServerHello 时，没有期限的握手
+	// 会让这次请求永远不返回。
 	ctx, cancel := context.WithTimeout(ctx, tlsDialTimeout)
 	defer cancel()
 

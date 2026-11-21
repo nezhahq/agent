@@ -11,7 +11,7 @@ import (
 // detailedStat covers NVIDIA, whose nvidia-smi output already carries frame
 // buffer figures. Other vendors report the generic path.
 func detailedStat(_ context.Context) ([]vendor.GPUStat, bool, error) {
-	if vendorType != vendorNVIDIA {
+	if vendorType() != vendorNVIDIA {
 		return nil, false, nil
 	}
 	smi := &vendor.NvidiaSMI{BinPath: "/usr/bin/nvidia-smi"}
