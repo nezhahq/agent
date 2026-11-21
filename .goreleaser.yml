@@ -8,6 +8,8 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w -X github.com/nezhahq/agent/pkg/monitor.Version={{.Version}} -X main.arch={{.Arch}}
+      # Self-update repository (owner/repo); unset NZ_AGENT_UPDATE_REPO keeps the upstream sources.
+      - -X main.updateRepo={{ envOrDefault "NZ_AGENT_UPDATE_REPO" "" }}
     goos:
       - linux
       - windows
