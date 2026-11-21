@@ -281,9 +281,12 @@ func run() {
 			reconnectAfterSessionExit(session, sessionShutdown{graceContext: graceContext, cause: cause}, retry)
 		}
 
-		timeOutCtx, cancel := context.WithTimeout(session.streamContext, 10*time.Second)
 		config := loadRuntimeConfig()
-		dashboardBootTimeReceipt, err = client.ReportSystemInfo2(timeOutCtx, monitor.GetHost(config).PB())
+		// 主机信息要在开始计时之前采集好：其中的 GPU 型号要运行厂商工具，慢的机器上
+		// 要好几秒，算进 RPC 的 10 秒期限里会让第一次上报必然超时并重连。
+		hostInfo := monitor.GetHost(config).PB()
+		timeOutCtx, cancel := context.WithTimeout(session.streamContext, 10*time.Second)
+		dashboardBootTimeReceipt, err = client.ReportSystemInfo2(timeOutCtx, hostInfo)
 		if err != nil {
 			printf("上报系统信息失败: %v", err)
 			cancel()
@@ -482,11 +485,13 @@ func reportHost(parent context.Context, config *model.AgentConfig) bool {
 	}
 	defer hostStatus.Store(false)
 	if client != nil && initialized {
+		// 采集主机信息的耗时不能算进 RPC 的期限（见首次上报处的说明）。
+		hostInfo := reportMonitorDependencies.getHost(config).PB()
 		rpcContext, cancel := context.WithTimeout(parent, 10*time.Second)
 		defer cancel()
 		// The parent must reach the actual RPC; timing out only the caller orphans
 		// the underlying gRPC operation after the connection session is canceled.
-		receipt, err := client.ReportSystemInfo2(rpcContext, reportMonitorDependencies.getHost(config).PB())
+		receipt, err := client.ReportSystemInfo2(rpcContext, hostInfo)
 		if err != nil {
 			printf("ReportSystemInfo2 error: %v", err)
 			return false

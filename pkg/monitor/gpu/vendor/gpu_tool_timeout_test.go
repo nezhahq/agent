@@ -39,3 +39,22 @@ func TestNvidiaSMI_HangingToolIsAbandonedAfterTimeout(t *testing.T) {
 		t.Fatalf("poll returned output %q for a tool that never finished", output)
 	}
 }
+
+// intel_gpu_top prints nothing when the driver is wedged. Without a timeout the
+// collection never returned, and with it every state report of the agent.
+func TestIntelGPUTop_HangingToolIsAbandonedAfterTimeout(t *testing.T) {
+	originalTimeout := gpuToolTimeout
+	t.Cleanup(func() { gpuToolTimeout = originalTimeout })
+	gpuToolTimeout = 300 * time.Millisecond
+	igt := &IntelGPUTop{BinPath: hangingTool(t)}
+
+	started := time.Now()
+	_, err := igt.collectStats()
+
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("collection returned after %s, want it bounded by the timeout", elapsed)
+	}
+	if err == nil {
+		t.Fatal("collection reported success for a tool that printed nothing")
+	}
+}

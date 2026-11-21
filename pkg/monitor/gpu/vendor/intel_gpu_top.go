@@ -2,6 +2,7 @@ package vendor
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jaypipes/ghw"
 )
@@ -104,7 +106,12 @@ func (igt *IntelGPUTop) Start() error {
 func (igt *IntelGPUTop) collectStats() (float64, error) {
 	// Use -l for list/text mode instead of -J (JSON) to avoid corrupted JSON issues
 	args := []string{"-s", intelGPUStatsInterval, "-l"}
-	cmd := exec.Command(igt.BinPath, args...)
+	// 必须有超时：采集在状态锁内同步进行，工具启动后不输出数据行（驱动异常时会这样）
+	// 的话，整台机器的状态上报会永久停住。
+	ctx, cancel := context.WithTimeout(context.Background(), gpuToolTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, igt.BinPath, args...)
+	cmd.WaitDelay = time.Second
 
 	// Avoid blocking if intel_gpu_top writes to stderr
 	cmd.Stderr = io.Discard

@@ -167,3 +167,32 @@ func assertTenSecondReportDeadline(t *testing.T, ctx context.Context) {
 		t.Fatalf("report RPC deadline remaining = %v, want (9s, 10s]", remaining)
 	}
 }
+
+// Gathering host information runs GPU vendor tools and can take seconds. Its
+// time must not be taken out of the RPC's ten seconds, or the first report of a
+// slow machine always times out and the agent reconnects.
+func TestReportHostDeadline_StartsAfterHostInformationIsGathered(t *testing.T) {
+	restore := installReportUnaryContextFixture(t)
+	defer restore()
+	const gatherTime = 400 * time.Millisecond
+	reportMonitorDependencies.getHost = func(*model.AgentConfig) *model.Host {
+		time.Sleep(gatherTime)
+		return &model.Host{}
+	}
+	parent, cancelParent := context.WithCancel(context.Background())
+	result := make(chan bool, 1)
+	go func() { result <- reportHost(parent, &model.AgentConfig{}) }()
+
+	rpcContext := awaitStreamOperationResult(t, client.(*reportUnaryContextClient).hostStarted)
+	deadline, hasDeadline := rpcContext.Deadline()
+	remaining := time.Until(deadline)
+	cancelParent()
+	awaitStreamOperationResult(t, result)
+
+	if !hasDeadline {
+		t.Fatal("ReportSystemInfo2 was called without a deadline")
+	}
+	if remaining < 10*time.Second-gatherTime/2 {
+		t.Fatalf("the RPC started with %s left of its 10s: gathering host information consumed the deadline", remaining)
+	}
+}

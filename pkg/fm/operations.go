@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -79,6 +80,11 @@ func (t *Task) download(path string) error {
 		return err
 	}
 
+	// 头里声明的是 stat 时的大小，之后只能发这么多字节，一个不多一个不少：
+	// 对端没有结束帧可看，只能数到声明的大小为止。文件在传输中被追加时多发的
+	// 字节会被对端当成后续的协议帧；被截短时对端会一直等下去，所以要明确报错。
+	declaredContent := io.LimitReader(file, fileSize)
+	sentBytes := int64(0)
 	for {
 		if err := t.context.Err(); err != nil {
 			return context.Cause(t.context)
@@ -87,7 +93,7 @@ func (t *Task) download(path string) error {
 		// 必须读满整片再发：分片不带帧头，面板前端只能靠“除最后一片外都是整 1MiB”
 		// 来区分文件内容和错误帧。单次 Read 的长度由文件系统决定，FUSE 和部分
 		// 网络文件系统会短读，短的分片若恰好以错误标识开头就会被当成错误中止下载。
-		read, readErr := io.ReadFull(file, buffer.buf)
+		read, readErr := io.ReadFull(declaredContent, buffer.buf)
 		if readErr == io.ErrUnexpectedEOF {
 			// 文件的最后一片：不足一整片，照常发出，下一轮读到 EOF 结束。
 			readErr = nil
@@ -95,6 +101,11 @@ func (t *Task) download(path string) error {
 		if readErr != nil {
 			bufPool.Put(buffer)
 			if readErr == io.EOF {
+				if sentBytes < fileSize {
+					shortened := fmt.Errorf("file changed during download: sent %d of %d bytes", sentBytes, fileSize)
+					t.printf("Error reading file: %s", shortened)
+					return t.sender.Send(&pb.IOStreamData{Data: CreateErr(shortened)})
+				}
 				return nil
 			}
 			t.printf("Error reading file: %s", readErr)
@@ -106,6 +117,7 @@ func (t *Task) download(path string) error {
 			_ = t.sender.Send(&pb.IOStreamData{Data: CreateErr(err)})
 			return err
 		}
+		sentBytes += int64(read)
 		bufPool.Put(buffer)
 	}
 }

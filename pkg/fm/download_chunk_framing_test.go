@@ -185,3 +185,80 @@ func TestTask_DownloadSendsFullChunksWhenTheFileSystemReadsShort(t *testing.T) {
 		t.Fatal("chunks do not reassemble into the file content")
 	}
 }
+
+// changedSizeDownloadFile reports one size and holds different content, the way
+// a file does that is appended to or truncated after the download began.
+type changedSizeDownloadFile struct {
+	*os.File
+	reportedSize int64
+}
+
+func (f *changedSizeDownloadFile) Stat() (os.FileInfo, error) {
+	info, err := f.File.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return changedSizeFileInfo{FileInfo: info, size: f.reportedSize}, nil
+}
+
+type changedSizeFileInfo struct {
+	os.FileInfo
+	size int64
+}
+
+func (i changedSizeFileInfo) Size() int64 { return i.size }
+
+func downloadWithReportedSize(t *testing.T, content []byte, reportedSize int64) [][]byte {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "changing.log")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write download fixture: %v", err)
+	}
+	stream := &taskIsolationStream{}
+	task := newTaskIsolationTask(stream)
+	task.openFile = func(path string) (downloadFile, error) {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		return &changedSizeDownloadFile{File: file, reportedSize: reportedSize}, nil
+	}
+	if err := task.download(path); err != nil {
+		t.Fatalf("download returned %v", err)
+	}
+	return stream.frames()
+}
+
+// The peer counts bytes up to the size in the header; there is no end frame.
+// A log that grew during the download used to be sent to its new end, and the
+// surplus reached the peer as if it were the next protocol frames.
+func TestTask_DownloadOfAGrowingFileStopsAtTheDeclaredSize(t *testing.T) {
+	frames := downloadWithReportedSize(t, []byte("123456789"), 5)
+
+	if len(frames) != 2 {
+		t.Fatalf("sent %d frames, want the header and one chunk", len(frames))
+	}
+	if declared := binary.BigEndian.Uint64(frames[0][4:]); declared != 5 {
+		t.Fatalf("header declares %d bytes, want 5", declared)
+	}
+	if string(frames[1]) != "12345" {
+		t.Fatalf("content = %q, want exactly the declared 5 bytes", frames[1])
+	}
+}
+
+// A file that became shorter used to end silently, leaving the peer waiting for
+// bytes that never come.
+func TestTask_DownloadOfATruncatedFileEndsWithAnError(t *testing.T) {
+	frames := downloadWithReportedSize(t, []byte("1234"), 10)
+
+	if len(frames) != 3 {
+		t.Fatalf("sent %d frames, want the header, the available content and an error", len(frames))
+	}
+	if string(frames[1]) != "1234" {
+		t.Fatalf("content = %q, want the 4 bytes that exist", frames[1])
+	}
+	wantError := append(append([]byte(nil), errorIdentifier...), "file changed during download: sent 4 of 10 bytes"...)
+	if !bytes.Equal(frames[2], wantError) {
+		t.Fatalf("last frame = %q, want %q", frames[2], wantError)
+	}
+}
