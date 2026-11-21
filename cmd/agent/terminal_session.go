@@ -127,6 +127,12 @@ func (h terminalHandler) run(parent context.Context, gates taskFeatureGates, tas
 		receiverJoined = true
 	case <-parent.Done():
 		cause = context.Cause(parent)
+	// 流本身失效（保活帧发不出去）也要结束会话。只看上面两个协程不够：前台程序不读
+	// 标准输入时，一次大段粘贴会把接收协程卡在写 PTY 上，它不再调用 Recv，浏览器
+	// 断开也就无从得知；程序没有输出时发送协程同样察觉不到。会话和 shell 就一直留着。
+	// 走到 shutdown 之后 PTY 被关闭，卡住的写入随之返回。
+	case <-streamContext.Done():
+		cause = context.Cause(streamContext)
 	}
 	ptyErr, shutdownResult := session.shutdown(cause, producerJoined, receiverJoined)
 	println("terminal exit", terminal.StreamID, ptyErr, shutdownResult.Err)

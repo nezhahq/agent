@@ -19,6 +19,9 @@ type terminalPTYRead struct {
 
 type terminalTestPTY struct {
 	reads chan terminalPTYRead
+	// writeBlockedUntilClose, when set, receives a value each time a write
+	// starts and makes that write block until Close.
+	writeBlockedUntilClose chan struct{}
 
 	readEntered  chan struct{}
 	readRelease  <-chan struct{}
@@ -59,6 +62,13 @@ func (p *terminalTestPTY) Read(buffer []byte) (int, error) {
 }
 
 func (p *terminalTestPTY) Write(data []byte) (int, error) {
+	if p.writeBlockedUntilClose != nil {
+		// A PTY whose foreground program does not read its input: the write
+		// stays blocked until the PTY is closed.
+		p.writeBlockedUntilClose <- struct{}{}
+		<-p.closed
+		return 0, io.ErrClosedPipe
+	}
 	p.mu.Lock()
 	p.writes = append(p.writes, append([]byte(nil), data...))
 	p.mu.Unlock()

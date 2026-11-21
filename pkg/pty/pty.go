@@ -17,8 +17,11 @@ var _ IPty = (*Pty)(nil)
 var defaultShells = []string{"zsh", "fish", "bash", "sh"}
 
 type Pty struct {
+	// tty 是 PTY 主端，尺寸等 ioctl 走它。
 	tty *os.File
-	cmd *exec.Cmd
+	// transfer 是读写用的句柄，见 interruptibleTransferFile。
+	transfer *os.File
+	cmd      *exec.Cmd
 }
 
 func DownloadDependency() error {
@@ -45,7 +48,7 @@ func Start() (IPty, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Pty{tty: tty, cmd: cmd}, nil
+	return &Pty{tty: tty, transfer: interruptibleTransferFile(tty), cmd: cmd}, nil
 }
 
 func terminalEnvironment(base []string) []string {
@@ -69,11 +72,11 @@ func terminalEnvironment(base []string) []string {
 }
 
 func (pty *Pty) Write(p []byte) (n int, err error) {
-	return pty.tty.Write(p)
+	return pty.transfer.Write(p)
 }
 
 func (pty *Pty) Read(p []byte) (n int, err error) {
-	return pty.tty.Read(p)
+	return pty.transfer.Read(p)
 }
 
 func (pty *Pty) Getsize() (uint16, uint16, error) {
@@ -113,5 +116,10 @@ func (pty *Pty) killChildProcess(c *exec.Cmd) error {
 }
 
 func (pty *Pty) Close() error {
-	return errors.Join(pty.tty.Close(), pty.killChildProcess(pty.cmd))
+	// 先关读写句柄：它能打断正阻塞着的读写（见 interruptibleTransferFile）。
+	var transferErr error
+	if pty.transfer != pty.tty {
+		transferErr = pty.transfer.Close()
+	}
+	return errors.Join(transferErr, pty.tty.Close(), pty.killChildProcess(pty.cmd))
 }
