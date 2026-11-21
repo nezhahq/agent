@@ -85,13 +85,23 @@ func TestTask_DownloadFailureIsOneShortErrorFrame(t *testing.T) {
 		t.Fatalf("write empty fixture: %v", err)
 	}
 	longestMissingPath := filepath.Join(t.TempDir(), strings.Repeat("d", 200), strings.Repeat("f", 255))
+	// The system's wording for a missing file differs per platform, so the
+	// expected text is whatever opening the same path reports.
+	openFailureText := func(path string) string {
+		_, err := openDownloadFile(path)
+		if err == nil {
+			t.Fatalf("opening %s succeeded, want a failure", path)
+		}
+		return err.Error()
+	}
+	missingPath := filepath.Join(t.TempDir(), "missing.bin")
 	cases := []struct {
 		name     string
 		path     string
 		wantText string
 	}{
-		{"missing file", filepath.Join(t.TempDir(), "missing.bin"), "no such file or directory"},
-		{"missing file with a long path", longestMissingPath, "no such file or directory"},
+		{"missing file", missingPath, openFailureText(missingPath)},
+		{"missing file with a long path", longestMissingPath, openFailureText(longestMissingPath)},
 		{"empty file", emptyFile, "requested file is empty"},
 	}
 	for _, testCase := range cases {
@@ -107,11 +117,9 @@ func TestTask_DownloadFailureIsOneShortErrorFrame(t *testing.T) {
 			if len(frames) != 1 {
 				t.Fatalf("sent %d frames, want exactly one error frame", len(frames))
 			}
-			if !bytes.HasPrefix(frames[0], errorIdentifier) {
-				t.Fatalf("frame = %q, want an error frame", frames[0])
-			}
-			if !bytes.Contains(frames[0], []byte(testCase.wantText)) {
-				t.Fatalf("error frame %q does not carry %q", frames[0], testCase.wantText)
+			wantFrame := append(append([]byte(nil), errorIdentifier...), testCase.wantText...)
+			if !bytes.Equal(frames[0], wantFrame) {
+				t.Fatalf("frame = %q, want %q", frames[0], wantFrame)
 			}
 			if len(frames[0]) > frontendMaxErrorFrameBytes {
 				t.Fatalf("error frame has %d bytes, the frontend would write it into the file", len(frames[0]))
