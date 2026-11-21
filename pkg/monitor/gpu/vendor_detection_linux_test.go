@@ -4,9 +4,19 @@ package gpu
 
 import (
 	"context"
+	"os"
 	"sync"
 	"testing"
 )
+
+// vendorProbeRunsAtPackageLoad is read in TestMain, after every package
+// initialiser has run and before any test queries the GPU.
+var vendorProbeRunsAtPackageLoad int32
+
+func TestMain(m *testing.M) {
+	vendorProbeRunsAtPackageLoad = vendorProbeRuns.Load()
+	os.Exit(m.Run())
+}
 
 // Detecting the GPU vendor runs vendor tools that can hang on a broken driver.
 // It used to run while the package was initialised, delaying every start of
@@ -19,8 +29,8 @@ func TestVendorDetectionWaitsForTheFirstQueryAndRunsOnce(t *testing.T) {
 		detectVendorOnce = sync.Once{}
 		detectedVendor = 0
 	})
-	if detectedVendor != 0 {
-		t.Fatalf("vendor %d was detected before any GPU query", detectedVendor)
+	if vendorProbeRunsAtPackageLoad != 0 {
+		t.Fatalf("vendor detection ran %d time(s) while the package was loading", vendorProbeRunsAtPackageLoad)
 	}
 	probes := 0
 	probeVendor = func() uint8 {

@@ -127,3 +127,61 @@ func TestTask_DownloadFailureIsOneShortErrorFrame(t *testing.T) {
 		})
 	}
 }
+
+// shortReadingDownloadFile returns at most a few hundred bytes per Read, the way
+// FUSE and some network file systems do.
+type shortReadingDownloadFile struct {
+	*os.File
+	bytesPerRead int
+}
+
+func (f *shortReadingDownloadFile) Read(buffer []byte) (int, error) {
+	if len(buffer) > f.bytesPerRead {
+		buffer = buffer[:f.bytesPerRead]
+	}
+	return f.File.Read(buffer)
+}
+
+// The chunk size must not depend on how much the file system returns per read.
+func TestTask_DownloadSendsFullChunksWhenTheFileSystemReadsShort(t *testing.T) {
+	content := make([]byte, 2*downloadChunkBytes+5)
+	if _, err := rand.Read(content); err != nil {
+		t.Fatalf("generate content: %v", err)
+	}
+	// With short reads every small piece used to be sent as its own frame; one
+	// that begins with the error marker reads as an error frame to the frontend.
+	copy(content[700:], errorIdentifier)
+	path := filepath.Join(t.TempDir(), "download.bin")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write download fixture: %v", err)
+	}
+	stream := &taskIsolationStream{}
+	task := newTaskIsolationTask(stream)
+	task.openFile = func(path string) (downloadFile, error) {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		return &shortReadingDownloadFile{File: file, bytesPerRead: 700}, nil
+	}
+
+	if err := task.download(path); err != nil {
+		t.Fatalf("download returned %v", err)
+	}
+
+	frames := stream.frames()
+	if len(frames) != 4 {
+		t.Fatalf("sent %d frames, want a header, two full chunks and the tail", len(frames))
+	}
+	wantLengths := []int{downloadChunkBytes, downloadChunkBytes, 5}
+	var received []byte
+	for index, chunk := range frames[1:] {
+		if len(chunk) != wantLengths[index] {
+			t.Fatalf("chunk %d has %d bytes, want %d", index, len(chunk), wantLengths[index])
+		}
+		received = append(received, chunk...)
+	}
+	if !bytes.Equal(received, content) {
+		t.Fatal("chunks do not reassemble into the file content")
+	}
+}

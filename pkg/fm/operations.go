@@ -84,7 +84,14 @@ func (t *Task) download(path string) error {
 			return context.Cause(t.context)
 		}
 		buffer := bufPool.Get().(*bp)
-		read, readErr := file.Read(buffer.buf)
+		// 必须读满整片再发：分片不带帧头，面板前端只能靠“除最后一片外都是整 1MiB”
+		// 来区分文件内容和错误帧。单次 Read 的长度由文件系统决定，FUSE 和部分
+		// 网络文件系统会短读，短的分片若恰好以错误标识开头就会被当成错误中止下载。
+		read, readErr := io.ReadFull(file, buffer.buf)
+		if readErr == io.ErrUnexpectedEOF {
+			// 文件的最后一片：不足一整片，照常发出，下一轮读到 EOF 结束。
+			readErr = nil
+		}
 		if readErr != nil {
 			bufPool.Put(buffer)
 			if readErr == io.EOF {
@@ -107,7 +114,7 @@ func (t *Task) upload(path string, fileSize uint64) error {
 	file, err := os.Create(path)
 	if err != nil {
 		t.printf("Error creating file: %s", err)
-		return t.sender.Send(&pb.IOStreamData{Data: CreateErr(err)})
+		return t.rejectUploadAfterDrainingBody(err, fileSize)
 	}
 	defer file.Close()
 
@@ -125,10 +132,34 @@ func (t *Task) upload(path string, fileSize uint64) error {
 		bytesWritten, writeErr := file.Write(frame.Data)
 		if writeErr != nil {
 			t.printf("Error writing to file: %s", writeErr)
-			return t.sender.Send(&pb.IOStreamData{Data: CreateErr(writeErr)})
+			arrived := totalReceived + uint64(len(frame.Data))
+			if arrived >= fileSize {
+				return t.rejectUploadAfterDrainingBody(writeErr, 0)
+			}
+			return t.rejectUploadAfterDrainingBody(writeErr, fileSize-arrived)
 		}
 		totalReceived += uint64(bytesWritten)
 	}
 	t.printf("received file %s.", file.Name())
 	return t.sender.Send(&pb.IOStreamData{Data: completeIdentifier})
+}
+
+// rejectUploadAfterDrainingBody 先把上传声明的剩余内容读完丢弃，再回报错误。
+// 上传的内容帧没有帧头，对端在收到错误之前会一直发：这里直接返回的话，剩下的
+// 内容帧会被命令循环当成命令解析，以 0x02 开头的一片会在它“声明”的路径上
+// 创建或清空文件。必须先读完再报错，报错在前对端就会停止发送，读不满。
+func (t *Task) rejectUploadAfterDrainingBody(cause error, remaining uint64) error {
+	for remaining > 0 {
+		frame, recvErr := t.uploadReceiver.Recv()
+		if recvErr != nil {
+			t.printf("Error receiving data: %s", recvErr)
+			return recvErr
+		}
+		arrived := uint64(len(frame.Data))
+		if arrived >= remaining {
+			break
+		}
+		remaining -= arrived
+	}
+	return t.sender.Send(&pb.IOStreamData{Data: CreateErr(cause)})
 }

@@ -5,6 +5,7 @@ package gpu
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/nezhahq/agent/pkg/monitor/gpu/vendor"
 )
@@ -22,10 +23,16 @@ var (
 	detectVendorOnce sync.Once
 	detectedVendor   uint8
 	probeVendor      = getVendor
+	// vendorProbeRuns 只供测试确认“包加载时没有探测”：没有 GPU 的机器上探测结果
+	// 本来就是 0，看 detectedVendor 分辨不出探测有没有跑过。
+	vendorProbeRuns atomic.Int32
 )
 
 func vendorType() uint8 {
-	detectVendorOnce.Do(func() { detectedVendor = probeVendor() })
+	detectVendorOnce.Do(func() {
+		vendorProbeRuns.Add(1)
+		detectedVendor = probeVendor()
+	})
 	return detectedVendor
 }
 
