@@ -39,12 +39,29 @@ func (t *Task) listDir(dir string) error {
 			return t.sender.Send(&pb.IOStreamData{Data: CreateErr(err)})
 		}
 	}
+	if t.framed.Load() {
+		for _, page := range createListingPages(dir, entries) {
+			if err := t.sender.Send(&pb.IOStreamData{Data: page}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return t.sender.Send(&pb.IOStreamData{Data: createLegacyListing(dir, entries)})
+}
+
+func createLegacyListing(dir string, entries []fs.DirEntry) []byte {
 	var buffer bytes.Buffer
 	data := Create(&buffer, dir)
 	for _, entry := range entries {
+		// 旧协议的文件名长度只有 1 字节：超过 255 字节的名字写进去长度会回绕，
+		// 之后的所有条目跟着错位。这样的条目在旧协议里无法表示，只能跳过。
+		if len(entry.Name()) > 255 {
+			continue
+		}
 		data = AppendFileName(data, entry.Name(), entry.IsDir())
 	}
-	return t.sender.Send(&pb.IOStreamData{Data: data})
+	return data
 }
 
 func (t *Task) download(path string) error {
@@ -68,7 +85,10 @@ func (t *Task) download(path string) error {
 		return t.sender.Send(&pb.IOStreamData{Data: CreateErr(err)})
 	}
 	fileSize := fileInfo.Size()
-	if fileSize <= 0 {
+	framed := t.framed.Load()
+	// 旧协议没有结束帧，对端靠“收够声明的字节数”判断下载完成，0 字节的文件
+	// 没有任何分片可等，所以只能拒绝。带帧头的协议有结束帧，可以下载空文件。
+	if fileSize < 0 || (fileSize == 0 && !framed) {
 		return t.sender.Send(&pb.IOStreamData{Data: CreateErr(errors.New("requested file is empty"))})
 	}
 
@@ -90,10 +110,16 @@ func (t *Task) download(path string) error {
 			return context.Cause(t.context)
 		}
 		buffer := bufPool.Get().(*bp)
+		// 带帧头的协议里每片以标识开头，整帧不超过缓冲区大小。
+		chunk := buffer.buf
+		chunkPrefixBytes := 0
+		if framed {
+			chunkPrefixBytes = copy(chunk, downloadChunkIdentifier)
+		}
 		// 必须读满整片再发：分片不带帧头，面板前端只能靠“除最后一片外都是整 1MiB”
 		// 来区分文件内容和错误帧。单次 Read 的长度由文件系统决定，FUSE 和部分
 		// 网络文件系统会短读，短的分片若恰好以错误标识开头就会被当成错误中止下载。
-		read, readErr := io.ReadFull(declaredContent, buffer.buf)
+		read, readErr := io.ReadFull(declaredContent, chunk[chunkPrefixBytes:])
 		if readErr == io.ErrUnexpectedEOF {
 			// 文件的最后一片：不足一整片，照常发出，下一轮读到 EOF 结束。
 			readErr = nil
@@ -106,12 +132,15 @@ func (t *Task) download(path string) error {
 					t.printf("Error reading file: %s", shortened)
 					return t.sender.Send(&pb.IOStreamData{Data: CreateErr(shortened)})
 				}
+				if framed {
+					return t.sender.Send(&pb.IOStreamData{Data: createDownloadEnd(uint64(sentBytes))})
+				}
 				return nil
 			}
 			t.printf("Error reading file: %s", readErr)
 			return t.sender.Send(&pb.IOStreamData{Data: CreateErr(readErr)})
 		}
-		if err := t.sender.Send(&pb.IOStreamData{Data: buffer.buf[:read]}); err != nil {
+		if err := t.sender.Send(&pb.IOStreamData{Data: chunk[:chunkPrefixBytes+read]}); err != nil {
 			bufPool.Put(buffer)
 			t.printf("Error sending file chunk: %s", err)
 			_ = t.sender.Send(&pb.IOStreamData{Data: CreateErr(err)})

@@ -36,6 +36,9 @@ type Task struct {
 	parseCommand    commandParser
 	dispatchCommand commandDispatcher
 
+	// framed 为 true 表示本会话已协商成带帧头的协议（版本 2）。
+	framed atomic.Bool
+
 	producerMu sync.Mutex
 	accepting  bool
 	producers  sync.WaitGroup
@@ -55,12 +58,16 @@ const (
 	commandList commandOperation = iota
 	commandDownload
 	commandUpload
+	// commandHello 协商带帧头的协议，见 framed_protocol.go。
+	commandHello
 )
 
 type parsedCommand struct {
 	operation commandOperation
 	path      string
 	fileSize  uint64
+	// helloVersion 是对端在问候里声明的最高协议版本。
+	helloVersion byte
 }
 
 type commandParser func([]byte) (parsedCommand, error)
@@ -105,6 +112,8 @@ func (t *Task) dispatchParsedCommand(command parsedCommand) error {
 		return nil
 	case commandUpload:
 		return t.upload(command.path, command.fileSize)
+	case commandHello:
+		return t.acknowledgeHello(command.helloVersion)
 	}
 	return nil
 }
@@ -123,8 +132,24 @@ func defaultCommandParser(frame []byte) (parsedCommand, error) {
 		}
 		command.fileSize = binary.BigEndian.Uint64(frame[1:9])
 		command.path = string(frame[9:])
+	case commandHello:
+		if len(frame) < 2 {
+			return parsedCommand{}, errInvalidCommandData
+		}
+		command.helloVersion = frame[1]
 	}
 	return command, nil
+}
+
+// acknowledgeHello 应答问候并切换到双方都支持的最高版本。
+// 声明的版本低于 2 的对端得到版本 1 的应答，会话继续按旧协议工作。
+func (t *Task) acknowledgeHello(peerVersion byte) error {
+	version := byte(1)
+	if peerVersion >= framedProtocolVersion {
+		version = framedProtocolVersion
+		t.framed.Store(true)
+	}
+	return t.sender.Send(&pb.IOStreamData{Data: createHelloAcknowledgement(version)})
 }
 
 func (t *Task) sendInvalidData() error {
