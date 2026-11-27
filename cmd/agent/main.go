@@ -186,6 +186,16 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			{
+				// Offline diagnostic used by release pipelines to verify the
+				// injected self-update repository; see self_update_source.go.
+				Name:   "update-repo",
+				Usage:  "输出自更新使用的仓库",
+				Hidden: true,
+				Action: func(c *cli.Context) error {
+					return printUpdateRepo(c.App.Writer)
+				},
+			},
+			{
 				Name:  "edit",
 				Usage: "编辑配置文件",
 				Flags: []cli.Flag{
@@ -612,8 +622,9 @@ func doSelfUpdate(config updateConfigTuple, useLocalVersion bool) (exit bool) {
 
 	printf("检查更新: %v", v)
 	var latest *selfupdate.Release
-	switch {
-	case config.useGiteeToUpgrade:
+	source := selectUpdateSource(updateRepo, config, monitor.CachedCountryCode(), func() bool { return rand.Intn(2) == 0 })
+	switch source.kind {
+	case updateSourceGitee:
 		updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
 			BinaryName: binaryName,
 		})
@@ -621,8 +632,8 @@ func doSelfUpdate(config updateConfigTuple, useLocalVersion bool) (exit bool) {
 			printf("更新失败: %v", erru)
 			return
 		}
-		latest, err = updater.UpdateSelf(v, "naibahq/agent")
-	case config.useAtomGitToUpgrade:
+		latest, err = updater.UpdateSelf(v, source.repo)
+	case updateSourceAtomGit:
 		updater, erru := selfupdate.NewAtomGitUpdater(selfupdate.Config{
 			BinaryName: binaryName,
 		})
@@ -630,27 +641,7 @@ func doSelfUpdate(config updateConfigTuple, useLocalVersion bool) (exit bool) {
 			printf("更新失败: %v", erru)
 			return
 		}
-		latest, err = updater.UpdateSelf(v, "naiba/nezha-agent")
-	case monitor.CachedCountryCode() == "cn":
-		if rand.Intn(2) == 0 {
-			updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
-				BinaryName: binaryName,
-			})
-			if erru != nil {
-				printf("更新失败: %v", erru)
-				return
-			}
-			latest, err = updater.UpdateSelf(v, "naibahq/agent")
-		} else {
-			updater, erru := selfupdate.NewAtomGitUpdater(selfupdate.Config{
-				BinaryName: binaryName,
-			})
-			if erru != nil {
-				printf("更新失败: %v", erru)
-				return
-			}
-			latest, err = updater.UpdateSelf(v, "naiba/nezha-agent")
-		}
+		latest, err = updater.UpdateSelf(v, source.repo)
 	default:
 		updater, erru := selfupdate.NewUpdater(selfupdate.Config{
 			BinaryName: binaryName,
@@ -659,7 +650,7 @@ func doSelfUpdate(config updateConfigTuple, useLocalVersion bool) (exit bool) {
 			printf("更新失败: %v", erru)
 			return
 		}
-		latest, err = updater.UpdateSelf(v, "nezhahq/agent")
+		latest, err = updater.UpdateSelf(v, source.repo)
 	}
 
 	if err != nil {
